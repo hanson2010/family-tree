@@ -1,0 +1,21 @@
+indexes:
+# Person kind indexes
+- kind: Person
+  properties:
+  - name: name
+    direction: asc
+
+- kind: Person
+  properties:
+  - name: createdBy
+    direction: asc
+
+- kind: Relationship
+  properties:
+  - name: personAId
+    direction: asc
+
+- kind: Relationship
+  properties:
+  - name: personBId
+    direction: asc

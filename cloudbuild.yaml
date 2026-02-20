@@ -1,0 +1,63 @@
+# Google Cloud Build configuration for automatic deployment from GitHub
+# This file configures CI/CD pipeline for the Family Tree application
+
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/family-tree:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/family-tree:latest'
+      - '.'
+    id: 'build-image'
+
+  # Step 2: Push the Docker image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/family-tree:$SHORT_SHA'
+    id: 'push-image-sha'
+    waitFor: ['build-image']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/family-tree:latest'
+    id: 'push-image-latest'
+    waitFor: ['build-image']
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'family-tree'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/family-tree:$SHORT_SHA'
+      - '--region'
+      - 'us-west1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'NEXTAUTH_URL=https://family-tree-XXXXX-uc.a.run.app,GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - '--set-secrets'
+      - 'NEXTAUTH_SECRET=nextauth-secret:latest,GITHUB_CLIENT_ID=github-client-id:latest,GITHUB_CLIENT_SECRET=github-client-secret:latest,GOOGLE_AI_API_KEY=google-ai-api-key:latest'
+    id: 'deploy-cloud-run'
+    waitFor: ['push-image-sha']
+
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/family-tree:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/family-tree:latest'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# Build timeout
+timeout: '1200s'
