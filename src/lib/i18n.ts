@@ -36,6 +36,7 @@ export const translations = {
     searchByName: '按姓名搜索',
     showPrivate: '显示私人人物',
     resetFilters: '重置筛选',
+    livingInYear: '在世年份',
 
     // Generation range
     generationRange: '世代范围',
@@ -127,6 +128,7 @@ export const translations = {
     searchByName: 'Search by name',
     showPrivate: 'Show private persons',
     resetFilters: 'Reset Filters',
+    livingInYear: 'Living in year',
 
     // Generation range
     generationRange: 'Generation Range',

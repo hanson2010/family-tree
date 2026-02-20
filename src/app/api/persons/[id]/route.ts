@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, getEntity, saveEntity, deleteEntity } from '@/lib/datastore';
+import { KINDS, getEntity, saveEntity, deleteEntity } from '@/lib/firestore';
 import type { Person, ApiResponse } from '@/types';
 import { personSchema } from '@/types';
 

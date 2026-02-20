@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, queryEntities, queryEntitiesByProperty, saveEntity } from '@/lib/datastore';
+import { KINDS, queryEntities, queryEntitiesByProperty, saveEntity } from '@/lib/firestore';
 import type { Relationship, ApiResponse } from '@/types';
 import { relationshipSchema, RelationshipType } from '@/types';
 import { v4 as uuidv4 } from 'uuid';

@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth';
 import GitHub from 'next-auth/providers/github';
-import { KINDS, getEntity, saveEntity } from '@/lib/datastore';
+import { KINDS, getEntity, saveEntity } from '@/lib/firestore';
 import type { User } from '@/types';
 
 // Full auth configuration with Datastore integration for API routes

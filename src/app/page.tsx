@@ -5,13 +5,13 @@ import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { FamilyTreeCanvas } from '@/components/FamilyTreeCanvas';
-import { SearchPanel } from '@/components/SearchPanel';
+import { LeftPanel } from '@/components/LeftPanel';
 import { PersonDetailsPanel } from '@/components/PersonDetailsPanel';
 import { PersonForm } from '@/components/PersonForm';
 import { RelationshipForm } from '@/components/RelationshipForm';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
-import type { Person, Relationship, GenerationRange, PersonFormData, RelationshipFormData } from '@/types';
+import type { Person, Relationship, GenerationRange, PersonFormData, RelationshipFormData, Gender } from '@/types';
 import { GenerationCalculator } from '@/lib/generation-calculator';
 
 export default function HomePage() {
@@ -42,6 +42,10 @@ export default function HomePage() {
     ancestors: 2,
     descendants: 3,
   });
+
+  // Filter state for gender and living in year
+  const [filterGenders, setFilterGenders] = useState<Gender[]>([]);
+  const [filterLivingInYear, setFilterLivingInYear] = useState<number | null>(null);
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -112,14 +116,6 @@ export default function HomePage() {
   // Apply filters
   const filteredPersons = React.useMemo(() => {
     return visiblePersons.filter(person => {
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        if (!person.name.toLowerCase().includes(query)) {
-          return false;
-        }
-      }
-
       // Privacy filter - anonymous users can only see public persons
       if (person.isPrivate) {
         // Only show private persons to their creator
@@ -128,9 +124,26 @@ export default function HomePage() {
         }
       }
 
+      // Gender filter
+      if (filterGenders.length > 0 && !filterGenders.includes(person.gender)) {
+        return false;
+      }
+
+      // Living in year filter - show only persons alive in the specified year
+      if (filterLivingInYear !== null) {
+        // Person must be born before or in the specified year
+        if (person.birthYear && person.birthYear > filterLivingInYear) {
+          return false;
+        }
+        // Person must not have died before the specified year
+        if (person.deathYear && person.deathYear < filterLivingInYear) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [visiblePersons, searchQuery, session]);
+  }, [visiblePersons, session, filterGenders, filterLivingInYear]);
 
   // Handlers
   const handleSearchChange = useCallback((query: string) => {
@@ -292,12 +305,22 @@ export default function HomePage() {
         <div className="flex-1 flex overflow-hidden">
           {/* Left panel - Search */}
           <div className="hidden lg:block w-72 border-r p-4 overflow-y-auto">
-            <SearchPanel
+            <LeftPanel
               searchQuery={searchQuery}
               onSearchChange={handleSearchChange}
               onAddPerson={handleAddPerson}
               onAddRelationship={handleAddRelationship}
               onSeedData={handleSeedData}
+              persons={persons}
+              onSelectPerson={setSelectedPersonId}
+              filterGenders={filterGenders}
+              filterLivingInYear={filterLivingInYear}
+              onFilterGendersChange={setFilterGenders}
+              onFilterLivingInYearChange={setFilterLivingInYear}
+              onFilterReset={() => {
+                setFilterGenders([]);
+                setFilterLivingInYear(null);
+              }}
             />
           </div>
 

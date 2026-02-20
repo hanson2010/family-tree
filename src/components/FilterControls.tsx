@@ -4,32 +4,24 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { useLocale } from '@/components/LocaleProvider';
-import type { FilterState, GenerationRange, Gender } from '@/types';
+import type { Gender } from '@/types';
 import { Gender as GenderEnum } from '@/types';
-import { Search, Filter, X } from 'lucide-react';
+import { Filter, X } from 'lucide-react';
 
 interface FilterControlsProps {
-  filters: FilterState;
-  generationRange: GenerationRange;
-  onFiltersChange: (filters: Partial<FilterState>) => void;
-  onGenerationRangeChange: (range: Partial<GenerationRange>) => void;
+  genders: Gender[];
+  livingInYear: number | null;
+  onGendersChange: (genders: Gender[]) => void;
+  onLivingInYearChange: (year: number | null) => void;
   onReset: () => void;
 }
 
 export function FilterControls({
-  filters,
-  generationRange,
-  onFiltersChange,
-  onGenerationRangeChange,
+  genders,
+  livingInYear,
+  onGendersChange,
+  onLivingInYearChange,
   onReset,
 }: FilterControlsProps) {
   const { t } = useLocale();
@@ -40,116 +32,73 @@ export function FilterControls({
     [GenderEnum.UNKNOWN]: t('unknown'),
   };
 
-  const hasActiveFilters =
-    filters.genders.length > 0 ||
-    filters.relationshipTypes.length > 0 ||
-    filters.searchQuery !== '' ||
-    filters.showPrivate;
+  const hasActiveFilters = genders.length > 0 || livingInYear !== null;
+
+  const handleYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value === '') {
+      onLivingInYearChange(null);
+    } else {
+      const year = parseInt(value);
+      if (!isNaN(year) && year >= 0 && year <= 2100) {
+        onLivingInYearChange(year);
+      }
+    }
+  };
 
   return (
-    <div className="bg-card border rounded-lg p-4 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4" />
-          <h3 className="font-semibold">{t('filters')}</h3>
+          <h3 className="font-semibold text-sm">{t('filters')}</h3>
         </div>
         {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={onReset}>
-            <X className="w-4 h-4 mr-1" />
+          <Button variant="ghost" size="sm" onClick={onReset} className="h-6 px-2 text-xs">
+            <X className="w-3 h-3 mr-1" />
             {t('resetFilters')}
           </Button>
         )}
       </div>
 
-      {/* Search */}
+      {/* Living in Year Filter */}
       <div className="space-y-2">
-        <Label htmlFor="search">{t('searchByName')}</Label>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            id="search"
-            placeholder={t('searchByName')}
-            value={filters.searchQuery}
-            onChange={(e) => onFiltersChange({ searchQuery: e.target.value })}
-            className="pl-9"
-          />
-        </div>
-      </div>
-
-      {/* Generation Range */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>{t('ancestors')}</Label>
-          <Select
-            value={generationRange.ancestors.toString()}
-            onValueChange={(value) => onGenerationRangeChange({ ancestors: parseInt(value) })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[0, 1, 2, 3, 4, 5].map((n) => (
-                <SelectItem key={n} value={n.toString()}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>{t('descendants')}</Label>
-          <Select
-            value={generationRange.descendants.toString()}
-            onValueChange={(value) => onGenerationRangeChange({ descendants: parseInt(value) })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[0, 1, 2, 3, 4, 5].map((n) => (
-                <SelectItem key={n} value={n.toString()}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Label htmlFor="livingInYear" className="text-sm">{t('livingInYear')}</Label>
+        <Input
+          id="livingInYear"
+          type="number"
+          placeholder={t('year')}
+          value={livingInYear ?? ''}
+          onChange={handleYearChange}
+          min={0}
+          max={2100}
+          className="h-8"
+        />
       </div>
 
       {/* Gender Filter */}
       <div className="space-y-2">
-        <Label>{t('gender')}</Label>
-        <div className="flex gap-2">
+        <Label className="text-sm">{t('gender')}</Label>
+        <div className="flex flex-wrap gap-2">
           {Object.entries(GENDER_LABELS).map(([value, label]) => (
             <Button
               key={value}
-              variant={filters.genders.includes(value as Gender) ? 'default' : 'outline'}
+              variant={genders.includes(value as Gender) ? 'default' : 'outline'}
               size="sm"
               onClick={() => {
-                const current = filters.genders;
-                const isSelected = current.includes(value as Gender);
-                onFiltersChange({
-                  genders: isSelected
-                    ? current.filter((g) => g !== value)
-                    : [...current, value as Gender],
-                });
+                const isSelected = genders.includes(value as Gender);
+                onGendersChange(
+                  isSelected
+                    ? genders.filter((g) => g !== value)
+                    : [...genders, value as Gender]
+                );
               }}
+              className="h-7 text-xs"
             >
               {label}
             </Button>
           ))}
         </div>
-      </div>
-
-      {/* Show Private */}
-      <div className="flex items-center justify-between">
-        <Label htmlFor="showPrivate">{t('showPrivate')}</Label>
-        <Switch
-          id="showPrivate"
-          checked={filters.showPrivate}
-          onCheckedChange={(checked) => onFiltersChange({ showPrivate: checked })}
-        />
       </div>
     </div>
   );

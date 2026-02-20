@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -61,6 +61,182 @@ const RELATIONSHIP_DESCRIPTIONS: Record<RelationshipType, string> = {
 
 // Relationship types that should not be shown in the form (auto-calculated)
 const HIDDEN_RELATIONSHIP_TYPES = [RelType.SIBLING, RelType.HALF_SIBLING];
+
+// Person autocomplete input component
+interface PersonAutocompleteProps {
+  value: string;
+  onChange: (value: string) => void;
+  persons: Person[];
+  excludeId?: string;
+  placeholder: string;
+  label: string;
+}
+
+function PersonAutocomplete({
+  value,
+  onChange,
+  persons,
+  excludeId,
+  placeholder,
+  label,
+}: PersonAutocompleteProps) {
+  const [inputValue, setInputValue] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Get the selected person's name
+  const selectedPerson = React.useMemo(() => {
+    return persons.find(p => p.id === value);
+  }, [persons, value]);
+
+  // Initialize input value with selected person's name
+  useEffect(() => {
+    if (selectedPerson) {
+      setInputValue(selectedPerson.name);
+    } else {
+      setInputValue('');
+    }
+  }, [selectedPerson]);
+
+  // Filter persons based on input
+  const filteredPersons = React.useMemo(() => {
+    if (!inputValue.trim()) {
+      return persons.filter(p => p.id !== excludeId).slice(0, 10);
+    }
+    const query = inputValue.toLowerCase();
+    return persons
+      .filter(p => p.id !== excludeId && p.name.toLowerCase().includes(query))
+      .slice(0, 10);
+  }, [persons, excludeId, inputValue]);
+
+  // Reset highlighted index when suggestions change
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [filteredPersons.length]);
+
+  // Handle click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+        // Reset input to selected person's name if no valid selection
+        if (selectedPerson) {
+          setInputValue(selectedPerson.name);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [selectedPerson]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+    setShowSuggestions(true);
+    // Clear selection if input is cleared or changed
+    if (e.target.value === '' || (selectedPerson && e.target.value !== selectedPerson.name)) {
+      // Don't clear immediately, let user select from suggestions
+    }
+  };
+
+  const handleSelectPerson = (person: Person) => {
+    setInputValue(person.name);
+    onChange(person.id);
+    setShowSuggestions(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || filteredPersons.length === 0) {
+      if (e.key === 'Escape') {
+        setShowSuggestions(false);
+        if (selectedPerson) {
+          setInputValue(selectedPerson.name);
+        }
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex(prev =>
+          prev < filteredPersons.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (filteredPersons[highlightedIndex]) {
+          handleSelectPerson(filteredPersons[highlightedIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        if (selectedPerson) {
+          setInputValue(selectedPerson.name);
+        }
+        break;
+    }
+  };
+
+  const handleFocus = () => {
+    setShowSuggestions(true);
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          placeholder={placeholder}
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          autoComplete="off"
+        />
+        {showSuggestions && filteredPersons.length > 0 && (
+          <div
+            ref={suggestionsRef}
+            className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg z-50 max-h-60 overflow-y-auto"
+          >
+            {filteredPersons.map((person, index) => (
+              <div
+                key={person.id}
+                className={`px-3 py-2 cursor-pointer flex items-center gap-2 ${
+                  index === highlightedIndex
+                    ? 'bg-accent text-accent-foreground'
+                    : 'hover:bg-accent/50'
+                }`}
+                onClick={() => handleSelectPerson(person)}
+                onMouseEnter={() => setHighlightedIndex(index)}
+              >
+                <span className="font-medium text-sm">{person.name}</span>
+                {person.birthYear && (
+                  <span className="text-xs text-muted-foreground">
+                    ({person.birthYear}
+                    {person.deathYear ? ` - ${person.deathYear}` : ''})
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function RelationshipForm({
   isOpen,
@@ -206,11 +382,6 @@ export function RelationshipForm({
     }
   };
 
-  const getPersonName = (id: string) => {
-    const person = persons.find(p => p.id === id);
-    return person ? person.name : '未知';
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
@@ -222,24 +393,13 @@ export function RelationshipForm({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Person A */}
-          <div className="space-y-2">
-            <Label htmlFor="personA">甲</Label>
-            <Select
-              value={formData.personAId}
-              onValueChange={(value) => handleInputChange('personAId', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择第一个人" />
-              </SelectTrigger>
-              <SelectContent>
-                {persons.map((person) => (
-                  <SelectItem key={person.id} value={person.id}>
-                    {person.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <PersonAutocomplete
+            value={formData.personAId}
+            onChange={(value) => handleInputChange('personAId', value)}
+            persons={persons}
+            placeholder="输入姓名搜索..."
+            label="甲"
+          />
 
           {/* Relationship Type */}
           <div className="space-y-2">
@@ -274,26 +434,14 @@ export function RelationshipForm({
           </div>
 
           {/* Person B */}
-          <div className="space-y-2">
-            <Label htmlFor="personB">乙</Label>
-            <Select
-              value={formData.personBId}
-              onValueChange={(value) => handleInputChange('personBId', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择第二个人" />
-              </SelectTrigger>
-              <SelectContent>
-                {persons
-                  .filter((p) => p.id !== formData.personAId)
-                  .map((person) => (
-                    <SelectItem key={person.id} value={person.id}>
-                      {person.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <PersonAutocomplete
+            value={formData.personBId}
+            onChange={(value) => handleInputChange('personBId', value)}
+            persons={persons}
+            excludeId={formData.personAId}
+            placeholder="输入姓名搜索..."
+            label="乙"
+          />
 
           {/* Start Date */}
           <div className="space-y-2">
