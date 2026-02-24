@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, getEntity, saveEntity, deleteEntity } from '@/lib/firestore';
-import type { Relationship, ApiResponse } from '@/types';
-import { relationshipSchema } from '@/types';
+import { KINDS, getEntity, saveEntity, deleteEntity, queryEntitiesByProperty } from '@/lib/firestore';
+import type { Relationship, ApiResponse, Person } from '@/types';
+import { relationshipSchema, RelationshipType, Gender } from '@/types';
 
 // GET /api/relationships/[id] - Get a single relationship
 export async function GET(
@@ -77,10 +77,31 @@ export async function PUT(
     }
 
     const data = validationResult.data;
+
+    // For SPOUSE relationships, normalize the order: female as A, male as B
+    let personAId = data.personAId;
+    let personBId = data.personBId;
+
+    if (data.type === RelationshipType.SPOUSE) {
+      const personA = await getEntity<Person>(KINDS.PERSON, data.personAId);
+      const personB = await getEntity<Person>(KINDS.PERSON, data.personBId);
+
+      if (personA && personB) {
+        // Normalize: female as A, male as B
+        if (personB.gender === Gender.FEMALE && personA.gender !== Gender.FEMALE) {
+          personAId = data.personBId;
+          personBId = data.personAId;
+        } else if (personA.gender === Gender.MALE && personB.gender !== Gender.MALE) {
+          personAId = data.personBId;
+          personBId = data.personAId;
+        }
+      }
+    }
+
     const updatedRelationship: Relationship = {
       ...existingRelationship,
-      personAId: data.personAId,
-      personBId: data.personBId,
+      personAId,
+      personBId,
       type: data.type,
       startYear: data.startYear ?? null,
       startMonth: data.startMonth ?? null,

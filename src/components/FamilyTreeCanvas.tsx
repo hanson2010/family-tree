@@ -40,7 +40,7 @@ const NODE_SIZE = 50;
 const NODE_RADIUS = 25;
 
 // Generation range to display: ancestors (negative) to descendants (positive)
-const GENERATION_MIN = -2; // ancestors (parents, grandparents)
+const GENERATION_MIN = -3; // ancestors (parents, grandparents, great-grandparents)
 const GENERATION_MAX = 3;  // descendants (children, grandchildren)
 
 // Vertical spacing per generation level
@@ -179,28 +179,6 @@ export function FamilyTreeCanvas({
     return { nodes, links, centerId };
   }, [persons, relationships, dimensions, findConnectedPersons]);
 
-  // Center the view on a specific person
-  const centerOnPerson = useCallback((personId: string, nodes: GraphNode[]) => {
-    if (!svgRef.current || !zoomRef.current || !gRef.current) return;
-
-    const node = nodes.find(n => n.id === personId);
-    if (!node || node.x === undefined || node.y === undefined) return;
-
-    const svg = d3.select(svgRef.current);
-    const { width, height } = dimensions;
-
-    // Calculate transform to center the node
-    const scale = 1;
-    const x = width / 2 - node.x * scale;
-    const y = height / 2 - node.y * scale;
-
-    const transform = d3.zoomIdentity.translate(x, y).scale(scale);
-
-    svg.transition()
-      .duration(500)
-      .call(zoomRef.current.transform, transform);
-  }, [dimensions]);
-
   // D3 visualization
   useEffect(() => {
     if (!svgRef.current || persons.length === 0) return;
@@ -234,11 +212,11 @@ export function FamilyTreeCanvas({
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink<GraphNode, GraphLink>(links)
         .id((d) => d.id)
-        .distance(150)
-        .strength(0.5))
-      .force('charge', d3.forceManyBody().strength(-300))
+        .distance(180)
+        .strength(0.3))
+      .force('charge', d3.forceManyBody().strength(-500))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(NODE_RADIUS + 20))
+      .force('collision', d3.forceCollide().radius(NODE_RADIUS + 30))
       // Custom force to keep nodes at their generation-based y position
       .force('y-generation', (alpha) => {
         const centerY = height / 2;
@@ -407,18 +385,11 @@ export function FamilyTreeCanvas({
       }
     });
 
-    // Click handler - select and center on the person
+    // Click handler - select the person
     node.on('click', (event, d) => {
       event.stopPropagation();
       const newSelectedId = d.id === selectedPersonId ? null : d.id;
       onSelectPerson(newSelectedId);
-
-      // Center on the clicked person
-      if (newSelectedId) {
-        setTimeout(() => {
-          centerOnPerson(newSelectedId, nodes);
-        }, 100);
-      }
     });
 
     // Hover handlers for kinship term tooltip
@@ -492,32 +463,11 @@ export function FamilyTreeCanvas({
     zoomRef.current = zoom;
     svg.call(zoom);
 
-    // Click on background to deselect
-    svg.on('click', () => {
-      onSelectPerson(null);
-    });
-
-    // Initial centering on selected person or first person
-    // Wait for simulation to settle before centering
-    if (centerId) {
-      const centerWhenSettled = () => {
-        // Check if simulation has cooled down enough
-        if (simulation.alpha() < 0.01) {
-          centerOnPerson(centerId, nodes);
-        } else {
-          // Check again after a short delay
-          setTimeout(centerWhenSettled, 100);
-        }
-      };
-      // Start checking after initial tick
-      setTimeout(centerWhenSettled, 200);
-    }
-
     // Cleanup
     return () => {
       simulation.stop();
     };
-  }, [persons, relationships, dimensions, selectedPersonId, getPersonColor, buildGraphData, onSelectPerson, onEditPerson, centerOnPerson, getKinshipTerm]);
+  }, [persons, relationships, dimensions, selectedPersonId, getPersonColor, buildGraphData, onSelectPerson, onEditPerson, getKinshipTerm]);
 
   // Empty state
   if (persons.length === 0) {

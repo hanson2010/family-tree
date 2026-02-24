@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useSession, signOut } from 'next-auth/react';
 import { LogOut, Github, Globe } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
-import { localeNames, Locale } from '@/lib/i18n';
+import { Locale } from '@/lib/i18n';
 
 export function Header() {
   const { data: session, status } = useSession();
@@ -51,7 +51,7 @@ export function Header() {
           className="mr-2"
         >
           <Globe className="h-4 w-4 mr-1" />
-          {localeNames[locale]}
+          {t('toggleLanguage')}
         </Button>
 
         {/* Auth buttons */}

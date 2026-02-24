@@ -238,7 +238,7 @@ function PersonAutocomplete({
   );
 }
 
-export function RelationshipForm({
+export function AddRelationshipForm({
   isOpen,
   mode,
   relationship,

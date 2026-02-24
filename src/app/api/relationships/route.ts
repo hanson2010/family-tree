@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, queryEntities, queryEntitiesByProperty, saveEntity } from '@/lib/firestore';
-import type { Relationship, ApiResponse } from '@/types';
-import { relationshipSchema, RelationshipType } from '@/types';
+import { KINDS, queryEntities, queryEntitiesByProperty, saveEntity, getEntity } from '@/lib/firestore';
+import type { Relationship, ApiResponse, Person } from '@/types';
+import { relationshipSchema, RelationshipType, Gender } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 // GET /api/relationships - List all relationships
@@ -60,10 +60,32 @@ export async function POST(request: NextRequest) {
     const data = validationResult.data;
     const now = new Date();
 
+    // For SPOUSE relationships, normalize the order: female as A, male as B
+    let personAId = data.personAId;
+    let personBId = data.personBId;
+
+    if (data.type === RelationshipType.SPOUSE) {
+      // Fetch both persons to determine their genders
+      const personA = await getEntity<Person>(KINDS.PERSON, data.personAId);
+      const personB = await getEntity<Person>(KINDS.PERSON, data.personBId);
+
+      if (personA && personB) {
+        // Normalize: female as A, male as B
+        // If both have same gender or unknown, keep original order
+        if (personB.gender === Gender.FEMALE && personA.gender !== Gender.FEMALE) {
+          personAId = data.personBId;
+          personBId = data.personAId;
+        } else if (personA.gender === Gender.MALE && personB.gender !== Gender.MALE) {
+          personAId = data.personBId;
+          personBId = data.personAId;
+        }
+      }
+    }
+
     const relationship: Relationship = {
       id: uuidv4(),
-      personAId: data.personAId,
-      personBId: data.personBId,
+      personAId,
+      personBId,
       type: data.type,
       startYear: data.startYear ?? null,
       startMonth: data.startMonth ?? null,
@@ -77,27 +99,6 @@ export async function POST(request: NextRequest) {
     };
 
     await saveEntity(KINDS.RELATIONSHIP, relationship);
-
-    // For SPOUSE relationships, create the bidirectional relationship
-    // CONCUBINE remains unidirectional (personA is the master, personB is the concubine)
-    if (data.type === RelationshipType.SPOUSE) {
-      const reverseRelationship: Relationship = {
-        id: uuidv4(),
-        personAId: data.personBId,
-        personBId: data.personAId,
-        type: data.type,
-        startYear: data.startYear ?? null,
-        startMonth: data.startMonth ?? null,
-        startDay: data.startDay ?? null,
-        endYear: data.endYear ?? null,
-        endMonth: data.endMonth ?? null,
-        endDay: data.endDay ?? null,
-        createdBy: session.user.id,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await saveEntity(KINDS.RELATIONSHIP, reverseRelationship);
-    }
 
     return NextResponse.json<ApiResponse<Relationship>>(
       { success: true, data: relationship },

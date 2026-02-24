@@ -5,15 +5,16 @@ import { Button } from '@/components/ui/button';
 import { useLocale } from '@/components/LocaleProvider';
 import type { Person } from '@/types';
 import { Gender } from '@/types';
-import { Edit, Trash2, User } from 'lucide-react';
+import { Edit, Trash2, User, GitBranch } from 'lucide-react';
 
 interface PersonDetailsPanelProps {
   person: Person | null;
   onEdit: (person: Person) => void;
   onDelete: (person: Person) => void;
+  onChangeRelationships?: (person: Person) => void;
 }
 
-export function PersonDetailsPanel({ person, onEdit, onDelete }: PersonDetailsPanelProps) {
+export function PersonDetailsPanel({ person, onEdit, onDelete, onChangeRelationships }: PersonDetailsPanelProps) {
   const { t } = useLocale();
 
   if (!person) {
@@ -117,25 +118,38 @@ export function PersonDetailsPanel({ person, onEdit, onDelete }: PersonDetailsPa
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 pt-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={() => onEdit(person)}
-        >
-          <Edit className="w-4 h-4 mr-1" />
-          {t('edit')}
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          className="flex-1"
-          onClick={() => onDelete(person)}
-        >
-          <Trash2 className="w-4 h-4 mr-1" />
-          {t('delete')}
-        </Button>
+      <div className="space-y-2 pt-2">
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={() => onEdit(person)}
+          >
+            <Edit className="w-4 h-4 mr-1" />
+            {t('edit')}
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="flex-1"
+            onClick={() => onDelete(person)}
+          >
+            <Trash2 className="w-4 h-4 mr-1" />
+            {t('delete')}
+          </Button>
+        </div>
+        {onChangeRelationships && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => onChangeRelationships(person)}
+          >
+            <GitBranch className="w-4 h-4 mr-1" />
+            {t('changeRelationship')}
+          </Button>
+        )}
       </div>
     </div>
   );

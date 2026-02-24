@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useSession } from 'next-auth/react';
 import { useLocale } from '@/components/LocaleProvider';
-import { Search, UserPlus, GitBranch, Database } from 'lucide-react';
+import { Search, UserPlus, GitBranch, Database, Zap, RefreshCw } from 'lucide-react';
 import type { Person, Gender } from '@/types';
 import { FilterControls } from '@/components/FilterControls';
 
@@ -16,6 +16,8 @@ interface LeftPanelProps {
   onSearchChange: (query: string) => void;
   onAddPerson: () => void;
   onAddRelationship: () => void;
+  onQuickAddRelationship: () => void;
+  onRefresh: () => void;
   onSeedData: () => void;
   persons: Person[];
   onSelectPerson: (personId: string) => void;
@@ -32,6 +34,8 @@ export function LeftPanel({
   onSearchChange,
   onAddPerson,
   onAddRelationship,
+  onQuickAddRelationship,
+  onRefresh,
   onSeedData,
   persons,
   onSelectPerson,
@@ -197,7 +201,7 @@ export function LeftPanel({
             {t('addPerson')}
           </Button>
 
-          {/* Add Relationship */}
+          {/* Add Relationship (Advanced) */}
           <Button
             variant="outline"
             className="w-full justify-start"
@@ -205,6 +209,27 @@ export function LeftPanel({
           >
             <GitBranch className="h-4 w-4 mr-2" />
             {t('addRelationship')}
+          </Button>
+
+          {/* Quick Add Relationship */}
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={onQuickAddRelationship}
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            {t('quickAddRelationship')}
+          </Button>
+
+          {/* Refresh - Random Select */}
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={onRefresh}
+            disabled={persons.length === 0}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {t('refresh')}
           </Button>
         </div>
       )}

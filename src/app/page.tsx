@@ -8,7 +8,9 @@ import { FamilyTreeCanvas } from '@/components/FamilyTreeCanvas';
 import { LeftPanel } from '@/components/LeftPanel';
 import { PersonDetailsPanel } from '@/components/PersonDetailsPanel';
 import { PersonForm } from '@/components/PersonForm';
-import { RelationshipForm } from '@/components/RelationshipForm';
+import { AddRelationshipForm } from '@/components/AddRelationshipForm';
+import { QuickRelationshipForm } from '@/components/QuickRelationshipForm';
+import { ChangeRelationshipForm } from '@/components/ChangeRelationshipForm';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
 import type { Person, Relationship, GenerationRange, PersonFormData, RelationshipFormData, Gender } from '@/types';
@@ -35,11 +37,14 @@ export default function HomePage() {
   const [relationshipFormMode, setRelationshipFormMode] = useState<'create' | 'edit'>('create');
   const [editingRelationship, setEditingRelationship] = useState<Relationship | null>(null);
 
+  const [isQuickRelationshipFormOpen, setIsQuickRelationshipFormOpen] = useState(false);
+  const [isDeleteRelationshipFormOpen, setIsDeleteRelationshipFormOpen] = useState(false);
+
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
 
   const [generationRange, setGenerationRange] = useState<GenerationRange>({
-    ancestors: 2,
+    ancestors: 3,
     descendants: 3,
   });
 
@@ -220,6 +225,58 @@ export default function HomePage() {
     fetchData();
   }, [relationshipFormMode, editingRelationship, fetchData, t]);
 
+  const handleQuickAddRelationship = useCallback(() => {
+    if (status !== 'authenticated') {
+      toast({
+        variant: 'destructive',
+        title: t('authenticationRequired'),
+        description: t('pleaseSignIn'),
+      });
+      return;
+    }
+    setIsQuickRelationshipFormOpen(true);
+  }, [status, toast, t]);
+
+  const handleDeleteRelationship = useCallback((_person: Person) => {
+    if (status !== 'authenticated') {
+      toast({
+        variant: 'destructive',
+        title: t('authenticationRequired'),
+        description: t('pleaseSignIn'),
+      });
+      return;
+    }
+    setIsDeleteRelationshipFormOpen(true);
+  }, [status, toast, t]);
+
+  const handleDeleteRelationshipConfirm = useCallback(async (relationshipId: string) => {
+    const response = await fetch(`/api/relationships/${relationshipId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || '删除关系失败');
+    }
+
+    fetchData();
+  }, [fetchData]);
+
+  const handleUpdateRelationship = useCallback(async (relationshipId: string, data: RelationshipFormData) => {
+    const response = await fetch(`/api/relationships/${relationshipId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || '更新关系失败');
+    }
+
+    fetchData();
+  }, [fetchData]);
+
   const handleSeedData = useCallback(async () => {
     if (status !== 'authenticated') {
       toast({
@@ -251,6 +308,15 @@ export default function HomePage() {
       });
     }
   }, [status, toast, fetchData, t]);
+
+  const handleRefresh = useCallback(() => {
+    if (persons.length > 0) {
+      const randomIndex = Math.floor(Math.random() * persons.length);
+      const randomPerson = persons[randomIndex];
+      setSelectedPersonId(randomPerson.id);
+      setSearchQuery(randomPerson.name);
+    }
+  }, [persons]);
 
   const handleDeletePerson = useCallback(async (person: Person) => {
     if (status !== 'authenticated') {
@@ -310,6 +376,8 @@ export default function HomePage() {
               onSearchChange={handleSearchChange}
               onAddPerson={handleAddPerson}
               onAddRelationship={handleAddRelationship}
+              onQuickAddRelationship={handleQuickAddRelationship}
+              onRefresh={handleRefresh}
               onSeedData={handleSeedData}
               persons={persons}
               onSelectPerson={setSelectedPersonId}
@@ -354,6 +422,7 @@ export default function HomePage() {
               person={selectedPerson}
               onEdit={handleEditPerson}
               onDelete={handleDeletePerson}
+              onChangeRelationships={handleDeleteRelationship}
             />
           </div>
         </div>
@@ -369,13 +438,32 @@ export default function HomePage() {
       />
 
       {/* Relationship form dialog */}
-      <RelationshipForm
+      <AddRelationshipForm
         isOpen={isRelationshipFormOpen}
         mode={relationshipFormMode}
         relationship={editingRelationship}
         persons={persons}
         onSubmit={handleRelationshipFormSubmit}
         onClose={() => setIsRelationshipFormOpen(false)}
+      />
+
+      {/* Quick relationship form dialog */}
+      <QuickRelationshipForm
+        isOpen={isQuickRelationshipFormOpen}
+        persons={persons}
+        onSubmit={handleRelationshipFormSubmit}
+        onClose={() => setIsQuickRelationshipFormOpen(false)}
+      />
+
+      {/* Modify or remove relationship form dialog */}
+      <ChangeRelationshipForm
+        isOpen={isDeleteRelationshipFormOpen}
+        relationships={relationships}
+        persons={persons}
+        preselectedPersonId={selectedPersonId || undefined}
+        onDelete={handleDeleteRelationshipConfirm}
+        onUpdate={handleUpdateRelationship}
+        onClose={() => setIsDeleteRelationshipFormOpen(false)}
       />
     </div>
   );
