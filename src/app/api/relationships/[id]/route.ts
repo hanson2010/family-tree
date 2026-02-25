@@ -5,11 +5,14 @@ import type { Relationship, ApiResponse, Person } from '@/types';
 import { relationshipSchema, RelationshipType, Gender } from '@/types';
 
 // GET /api/relationships/[id] - Get a single relationship
+// Anonymous users can only access relationships between public persons
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
     const { id } = await params;
     const relationship = await getEntity<Relationship>(KINDS.RELATIONSHIP, id);
 
@@ -18,6 +21,19 @@ export async function GET(
         { success: false, error: 'Relationship not found' },
         { status: 404 }
       );
+    }
+
+    // For anonymous users, check if both persons in the relationship are public
+    if (!userId) {
+      const personA = await getEntity<Person>(KINDS.PERSON, relationship.personAId);
+      const personB = await getEntity<Person>(KINDS.PERSON, relationship.personBId);
+
+      if (!personA || !personB || personA.isPrivate || personB.isPrivate) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: 'Relationship not found' },
+          { status: 404 }
+        );
+      }
     }
 
     return NextResponse.json<ApiResponse<Relationship>>({

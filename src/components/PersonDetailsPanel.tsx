@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { useLocale } from '@/components/LocaleProvider';
+import { useSession } from 'next-auth/react';
 import type { Person } from '@/types';
 import { Gender } from '@/types';
 import { Edit, Trash2, User, GitBranch } from 'lucide-react';
@@ -16,6 +17,8 @@ interface PersonDetailsPanelProps {
 
 export function PersonDetailsPanel({ person, onEdit, onDelete, onChangeRelationships }: PersonDetailsPanelProps) {
   const { t } = useLocale();
+  const { status } = useSession();
+  const isAuthenticated = status === 'authenticated';
 
   if (!person) {
     return (
@@ -117,40 +120,42 @@ export function PersonDetailsPanel({ person, onEdit, onDelete, onChangeRelations
         )}
       </div>
 
-      {/* Actions */}
-      <div className="space-y-2 pt-2">
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            onClick={() => onEdit(person)}
-          >
-            <Edit className="w-4 h-4 mr-1" />
-            {t('edit')}
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="flex-1"
-            onClick={() => onDelete(person)}
-          >
-            <Trash2 className="w-4 h-4 mr-1" />
-            {t('delete')}
-          </Button>
+      {/* Actions - Only show for authenticated users */}
+      {isAuthenticated && (
+        <div className="space-y-2 pt-2">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => onEdit(person)}
+            >
+              <Edit className="w-4 h-4 mr-1" />
+              {t('edit')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="flex-1"
+              onClick={() => onDelete(person)}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              {t('delete')}
+            </Button>
+          </div>
+          {onChangeRelationships && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => onChangeRelationships(person)}
+            >
+              <GitBranch className="w-4 h-4 mr-1" />
+              {t('changeRelationship')}
+            </Button>
+          )}
         </div>
-        {onChangeRelationships && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => onChangeRelationships(person)}
-          >
-            <GitBranch className="w-4 h-4 mr-1" />
-            {t('changeRelationship')}
-          </Button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

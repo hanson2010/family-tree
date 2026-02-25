@@ -36,6 +36,7 @@ export function calculateDetailedRelationship(
     side?: 'PATERNAL' | 'MATERNAL';
     isOlder?: boolean;
     generationDiff: number;
+    siblingRank?: { rank: number; total: number };
   };
 } {
   const personMap = new Map(persons.map(p => [p.id, p]));
@@ -71,13 +72,17 @@ export function calculateDetailedRelationship(
   // Determine age order based on birth dates
   // For aunt/uncle relationships, compare with the parent's age, not the child's
   let isOlder: boolean | undefined;
+  let siblingRank: { rank: number; total: number } | undefined;
+
   if (path.relationshipType === 'AUNT_UNCLE') {
     isOlder = determineAuntUncleAgeOrder(fromPersonId, toPersonId, persons, relationships);
+    // Determine sibling rank for aunts/uncles among their siblings
+    siblingRank = determineSiblingRank(toPersonId, persons, relationships);
   } else {
     isOlder = determineAgeOrder(fromPerson, toPerson);
   }
 
-  const term = getChineseKinshipTerm(fromPerson, toPerson, path, { side, isOlder });
+  const term = getChineseKinshipTerm(fromPerson, toPerson, path, { side, isOlder, siblingRank });
 
   return {
     term,
@@ -86,6 +91,7 @@ export function calculateDetailedRelationship(
       side,
       isOlder,
       generationDiff: path.generations,
+      siblingRank,
     },
   };
 }
@@ -111,7 +117,7 @@ function determineSide(
     .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personBId === toPersonId)
     .map(r => r.personAId);
 
-  // Find common parent (for siblings/cousins)
+  // Find common parent (for siblings)
   const commonParent = fromParents.find(p => toParents.includes(p));
 
   if (commonParent) {
@@ -121,20 +127,48 @@ function determineSide(
     }
   }
 
+  // For cousin relationships
+  // Check if fromPerson's parent and toPerson's parent are siblings (share a common parent)
+  for (const fromParentId of fromParents) {
+    // Find parents of fromPerson's parent (grandparents of fromPerson)
+    const fromGrandparentIds = relationships
+      .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personBId === fromParentId)
+      .map(r => r.personAId);
+
+    for (const toParentId of toParents) {
+      // Find parents of toPerson's parent (grandparents of toPerson)
+      const toGrandparentIds = relationships
+        .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personBId === toParentId)
+        .map(r => r.personAId);
+
+      // Check if the parents share a common parent (are siblings)
+      const sharedGrandparent = fromGrandparentIds.find(gp => toGrandparentIds.includes(gp));
+
+      if (sharedGrandparent) {
+        const grandparent = personMap.get(sharedGrandparent);
+        if (grandparent) {
+          // The side is determined by the shared grandparent's gender
+          // Male grandparent = paternal side (堂)
+          // Female grandparent = maternal side (表)
+          return grandparent.gender === GenderEnum.MALE ? 'PATERNAL' : 'MATERNAL';
+        }
+      }
+    }
+  }
+
   // For aunt/uncle relationships
-  // Check if toPerson is a derived sibling (shares a parent) of fromPerson's parent
+  // Check if toPerson is a sibling (shares a parent) of fromPerson's parent
   for (const parentId of fromParents) {
     // Find parents of this parent (grandparents of fromPerson)
     const grandparentIds = relationships
       .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personBId === parentId)
       .map(r => r.personAId);
 
-    // Find toPerson's parents
+    // Check if toPerson shares a parent with fromPerson's parent (are siblings)
     const toPersonParents = relationships
       .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personBId === toPersonId)
       .map(r => r.personAId);
 
-    // Check if toPerson shares a parent with fromPerson's parent (derived sibling)
     const sharedGrandparent = grandparentIds.find(gp => toPersonParents.includes(gp));
 
     if (sharedGrandparent) {
@@ -174,6 +208,66 @@ function determineAgeOrder(
     }
   }
   return undefined;
+}
+
+/**
+ * Determine birth order rank among siblings
+ * Returns 1-based rank (1 = oldest, 2 = second, etc.)
+ * Also returns total count of siblings
+ */
+export function determineSiblingRank(
+  personId: string,
+  persons: Person[],
+  relationships: Relationship[]
+): { rank: number; total: number } | undefined {
+  const personMap = new Map(persons.map(p => [p.id, p]));
+  const person = personMap.get(personId);
+  if (!person) return undefined;
+
+  // Find parents of this person
+  const parentIds = relationships
+    .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personBId === personId)
+    .map(r => r.personAId);
+
+  if (parentIds.length === 0) return undefined;
+
+  // Find all siblings (including the person themselves)
+  const siblingIds = new Set<string>();
+  siblingIds.add(personId);
+
+  for (const parentId of parentIds) {
+    const childrenOfParent = relationships
+      .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personAId === parentId)
+      .map(r => r.personBId);
+    childrenOfParent.forEach(id => siblingIds.add(id));
+  }
+
+  // Get all siblings with birth dates
+  const siblingsWithBirthDates: Array<{ id: string; birthDate: number }> = [];
+
+  for (const siblingId of siblingIds) {
+    const sibling = personMap.get(siblingId);
+    if (sibling && sibling.birthYear) {
+      // Create a comparable birth date value
+      const birthValue =
+        sibling.birthYear * 10000 +
+        (sibling.birthMonth || 7) * 100 +
+        (sibling.birthDay || 15);
+      siblingsWithBirthDates.push({ id: siblingId, birthDate: birthValue });
+    }
+  }
+
+  // If we don't have birth dates for anyone, return undefined
+  if (siblingsWithBirthDates.length === 0) return undefined;
+
+  // Sort by birth date (oldest first = smallest birth date)
+  siblingsWithBirthDates.sort((a, b) => a.birthDate - b.birthDate);
+
+  // Find the rank of the person
+  const rank = siblingsWithBirthDates.findIndex(s => s.id === personId) + 1;
+  const total = siblingsWithBirthDates.length;
+
+  return { rank, total };
 }
 
 /**

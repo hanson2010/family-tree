@@ -11,25 +11,25 @@ export default authMiddleware((req) => {
     nextUrl.pathname.startsWith(route)
   );
 
-  // API routes that should be protected
-  const protectedApiRoutes = ['/api/persons', '/api/relationships', '/api/avatar'];
-  const isProtectedApiRoute = protectedApiRoutes.some(route =>
-    nextUrl.pathname.startsWith(route)
-  );
-
   // Allow public routes
   if (isPublicRoute) {
     return NextResponse.next();
   }
 
-  // Redirect to signin if not logged in and trying to access protected routes
-  if (!isLoggedIn && (nextUrl.pathname.startsWith('/api') || nextUrl.pathname === '/')) {
-    if (isProtectedApiRoute) {
+  // Allow anonymous users to browse the main page and view public data
+  // The API routes will filter data based on authentication status
+  if (nextUrl.pathname === '/') {
+    return NextResponse.next();
+  }
+
+  // API routes that require write operations (POST, PUT, DELETE) need authentication
+  // GET requests are allowed for anonymous users - the API will filter data accordingly
+  if (nextUrl.pathname.startsWith('/api/')) {
+    const method = req.method;
+    if (method !== 'GET' && !isLoggedIn) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (nextUrl.pathname === '/') {
-      return NextResponse.redirect(new URL('/auth/signin', nextUrl));
-    }
+    return NextResponse.next();
   }
 
   return NextResponse.next();

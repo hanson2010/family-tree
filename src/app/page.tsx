@@ -310,13 +310,36 @@ export default function HomePage() {
   }, [status, toast, fetchData, t]);
 
   const handleRefresh = useCallback(() => {
-    if (persons.length > 0) {
-      const randomIndex = Math.floor(Math.random() * persons.length);
-      const randomPerson = persons[randomIndex];
+    // Check if any filters are active
+    const hasActiveFilters = filterGenders.length > 0 || filterLivingInYear !== null;
+
+    // Get persons that satisfy all filters
+    const eligiblePersons = hasActiveFilters
+      ? persons.filter(person => {
+          // Gender filter
+          if (filterGenders.length > 0 && !filterGenders.includes(person.gender)) {
+            return false;
+          }
+          // Living in year filter
+          if (filterLivingInYear !== null) {
+            if (person.birthYear && person.birthYear > filterLivingInYear) {
+              return false;
+            }
+            if (person.deathYear && person.deathYear < filterLivingInYear) {
+              return false;
+            }
+          }
+          return true;
+        })
+      : persons;
+
+    if (eligiblePersons.length > 0) {
+      const randomIndex = Math.floor(Math.random() * eligiblePersons.length);
+      const randomPerson = eligiblePersons[randomIndex];
       setSelectedPersonId(randomPerson.id);
       setSearchQuery(randomPerson.name);
     }
-  }, [persons]);
+  }, [persons, filterGenders, filterLivingInYear]);
 
   const handleDeletePerson = useCallback(async (person: Person) => {
     if (status !== 'authenticated') {

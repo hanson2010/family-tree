@@ -6,8 +6,11 @@ import { relationshipSchema, RelationshipType, Gender } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 // GET /api/relationships - List all relationships
+// For anonymous users, only return relationships involving public persons
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
     const searchParams = request.nextUrl.searchParams;
     const personId = searchParams.get('personId');
 
@@ -20,6 +23,20 @@ export async function GET(request: NextRequest) {
       relationships = [...asA, ...asB];
     } else {
       relationships = await queryEntities<Relationship>(KINDS.RELATIONSHIP);
+    }
+
+    // For anonymous users, filter relationships to only include those involving public persons
+    if (!userId) {
+      // Get all persons to check privacy
+      const allPersons = await queryEntities<Person>(KINDS.PERSON);
+      const publicPersonIds = new Set(
+        allPersons.filter(p => !p.isPrivate).map(p => p.id)
+      );
+
+      // Only include relationships where both persons are public
+      relationships = relationships.filter(rel =>
+        publicPersonIds.has(rel.personAId) && publicPersonIds.has(rel.personBId)
+      );
     }
 
     return NextResponse.json<ApiResponse<Relationship[]>>({

@@ -27,6 +27,8 @@ interface LeftPanelProps {
   onFilterGendersChange: (genders: Gender[]) => void;
   onFilterLivingInYearChange: (year: number | null) => void;
   onFilterReset: () => void;
+  // Filtered persons count for refresh button state
+  filteredPersonsCount?: number;
 }
 
 export function LeftPanel({
@@ -44,6 +46,7 @@ export function LeftPanel({
   onFilterGendersChange,
   onFilterLivingInYearChange,
   onFilterReset,
+  filteredPersonsCount,
 }: LeftPanelProps) {
   const { data: session, status } = useSession();
   const { t } = useLocale();
@@ -186,67 +189,69 @@ export function LeftPanel({
         onReset={onFilterReset}
       />
 
-      {/* Divider */}
-      <div className="border-t" />
+      {/* Divider - only show if there are actions below */}
+      {isAuthenticated && <div className="border-t" />}
 
       {/* Actions */}
-      {isAuthenticated && (
-        <div className="space-y-2">
-          {/* Add Person */}
-          <Button
-            className="w-full justify-start"
-            onClick={onAddPerson}
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            {t('addPerson')}
-          </Button>
+      <div className="space-y-2">
+        {isAuthenticated && (
+          <>
+            {/* Add Person */}
+            <Button
+              className="w-full justify-start"
+              onClick={onAddPerson}
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              {t('addPerson')}
+            </Button>
 
-          {/* Add Relationship (Advanced) */}
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            onClick={onAddRelationship}
-          >
-            <GitBranch className="h-4 w-4 mr-2" />
-            {t('addRelationship')}
-          </Button>
+            {/* Add Relationship (Advanced) */}
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={onAddRelationship}
+            >
+              <GitBranch className="h-4 w-4 mr-2" />
+              {t('addRelationship')}
+            </Button>
 
-          {/* Quick Add Relationship */}
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            onClick={onQuickAddRelationship}
-          >
-            <Zap className="h-4 w-4 mr-2" />
-            {t('quickAddRelationship')}
-          </Button>
+            {/* Quick Add Relationship */}
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={onQuickAddRelationship}
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              {t('quickAddRelationship')}
+            </Button>
+          </>
+        )}
 
-          {/* Refresh - Random Select */}
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            onClick={onRefresh}
-            disabled={persons.length === 0}
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            {t('refresh')}
-          </Button>
-        </div>
-      )}
-
-      {/* Divider */}
-      <div className="border-t" />
-
-      {/* Seed Data (Development) */}
-      {isAuthenticated && (
+        {/* Refresh - Random Select (available for all users) */}
         <Button
-          variant="ghost"
-          className="w-full justify-start text-muted-foreground"
-          onClick={onSeedData}
+          variant="outline"
+          className="w-full justify-start"
+          onClick={onRefresh}
+          disabled={persons.length === 0}
         >
-          <Database className="h-4 w-4 mr-2" />
-          {t('seedData')}
+          <RefreshCw className="h-4 w-4 mr-2" />
+          {t('refresh')}
         </Button>
+      </div>
+
+      {/* Seed Data (Development) - Only for authenticated users */}
+      {isAuthenticated && (
+        <>
+          <div className="border-t" />
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-muted-foreground"
+            onClick={onSeedData}
+          >
+            <Database className="h-4 w-4 mr-2" />
+            {t('seedData')}
+          </Button>
+        </>
       )}
 
       {/* Footer */}

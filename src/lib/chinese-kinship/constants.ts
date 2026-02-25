@@ -39,12 +39,13 @@ export const EXTENDED_KINSHIP_TERMS: Record<string, Record<string, string>> = {
     'MOTHER_IN_LAW_FEMALE': '岳母',
     'SON_IN_LAW': '女婿',
     'DAUGHTER_IN_LAW': '儿媳',
-    'BROTHER_IN_LAW': '姐夫/妹夫',
-    'SISTER_IN_LAW': '嫂子/弟媳',
+    // Sibling's spouse (sister's husband)
+    'OLDER_SISTER_HUSBAND': '姐夫',
+    'YOUNGER_SISTER_HUSBAND': '妹夫',
+    // Sibling's spouse (brother's wife)
+    'OLDER_BROTHER_WIFE': '嫂子',
+    'YOUNGER_BROTHER_WIFE': '弟媳',
     'SISTER_IN_LAW_SPOUSE': '姑嫂',
-    'BROTHERS_WIFE': '嫂子/弟媳',
-    'BROTHERS_HUSBAND': '姐夫/妹夫',
-    'SISTERS_HUSBAND': '姐夫/妹夫',
     // Spouse's siblings (from perspective of the speaker)
     'HUSBAND_OLDER_BROTHER': '大伯子',
     'HUSBAND_YOUNGER_BROTHER': '小叔子',
@@ -60,11 +61,32 @@ export const EXTENDED_KINSHIP_TERMS: Record<string, Record<string, string>> = {
   },
   // Spouse's family
   SPOUSE_FAMILY: {
-    'SPOUSE_FATHER': '岳父/公公',
-    'SPOUSE_MOTHER': '岳母/婆婆',
-    'SPOUSE_BROTHER': '大伯子/小叔子/内兄/内弟',
-    'SPOUSE_SISTER': '大姑子/小姑子/大姨子/小姨子',
-    'SPOUSE_UNCLE': '岳叔/岳伯',
-    'SPOUSE_AUNT': '岳姑/岳姨',
+    // Spouse's father (from speaker's perspective)
+    'HUSBAND_FATHER': '公公',
+    'WIFE_FATHER': '岳父',
+    // Spouse's mother (from speaker's perspective)
+    'HUSBAND_MOTHER': '婆婆',
+    'WIFE_MOTHER': '岳母',
+    // Spouse's brother (from speaker's perspective)
+    'HUSBAND_OLDER_BROTHER': '大伯子',
+    'HUSBAND_YOUNGER_BROTHER': '小叔子',
+    'WIFE_OLDER_BROTHER': '内兄',
+    'WIFE_YOUNGER_BROTHER': '内弟',
+    // Spouse's sister (from speaker's perspective)
+    'HUSBAND_OLDER_SISTER': '大姑子',
+    'HUSBAND_YOUNGER_SISTER': '小姑子',
+    'WIFE_OLDER_SISTER': '大姨子',
+    'WIFE_YOUNGER_SISTER': '小姨子',
+    // Spouse's uncles/aunts
+    'HUSBAND_UNCLE_PATERNAL_OLDER': '伯父',
+    'HUSBAND_UNCLE_PATERNAL_YOUNGER': '叔父',
+    'HUSBAND_UNCLE_MATERNAL': '舅父',
+    'WIFE_UNCLE_PATERNAL_OLDER': '岳伯',
+    'WIFE_UNCLE_PATERNAL_YOUNGER': '岳叔',
+    'WIFE_UNCLE_MATERNAL': '岳舅',
+    'HUSBAND_AUNT_PATERNAL': '姑母',
+    'HUSBAND_AUNT_MATERNAL': '姨母',
+    'WIFE_AUNT_PATERNAL': '岳姑',
+    'WIFE_AUNT_MATERNAL': '岳姨',
   },
 };
