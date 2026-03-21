@@ -11,6 +11,9 @@ Return ONLY a JSON object with x, y, width, height as percentages (0-100) of
 the image dimensions. Example: {"x": 20, "y": 10, "width": 60, "height": 60}
 `;
 
+// Default Gemini model
+const DEFAULT_GOOGLE_AI_MODEL = 'gemini-2.5-flash-lite';
+
 // POST /api/avatar - Process avatar image
 export async function POST(request: NextRequest) {
   try {
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: process.env.GOOGLE_AI_MODEL || DEFAULT_GOOGLE_AI_MODEL });
 
       const result = await model.generateContent([
         GEMINI_CROP_PROMPT,

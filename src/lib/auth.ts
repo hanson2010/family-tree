@@ -14,6 +14,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      issuer: 'https://github.com',
+      authorization: { params: { scope: 'read:user user:email' } },
     }),
   ],
   callbacks: {

@@ -30,12 +30,27 @@ export function getParentChildTerm(
 
 /**
  * Get Chinese kinship term for sibling relationship
+ * Supports rank-based terms like 大哥, 二哥, 三哥, 大姐, 二姐, 小弟, 小妹, etc.
  */
 export function getSiblingTerm(
   fromGender: GenderKey,
   toGender: GenderKey,
-  isOlder?: boolean
+  isOlder?: boolean,
+  siblingRank?: { rank: number; total: number }
 ): string {
+  // Use rank-based terms if siblingRank is provided
+  if (siblingRank && siblingRank.total > 1) {
+    const prefix = getRankPrefix(siblingRank.rank, siblingRank.total);
+    if (toGender === 'MALE') {
+      // Older brother: 哥, Younger brother: 弟
+      return `${prefix}${isOlder ? '哥' : '弟'}`;
+    } else {
+      // Older sister: 姐, Younger sister: 妹
+      return `${prefix}${isOlder ? '姐' : '妹'}`;
+    }
+  }
+
+  // Fallback to basic terms without rank
   if (fromGender === 'MALE') {
     // Male speaking
     switch (toGender) {
@@ -147,10 +162,10 @@ export function getNephewNieceTerm(
 ): string {
   if (fromGender === 'MALE') {
     // From uncle/aunt (male perspective - speaking of sibling's child)
-    return toGender === 'MALE' ? '侄子' : '侄女';
+    return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.PATERNAL.NEPHEW : EXTENDED_KINSHIP_TERMS.PATERNAL.NIECE;
   } else {
     // From aunt (female perspective)
-    return toGender === 'MALE' ? '外甥' : '外甥女';
+    return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.MATERNAL.NEPHEW : EXTENDED_KINSHIP_TERMS.MATERNAL.NIECE;
   }
 }
 
@@ -165,10 +180,10 @@ export function getCousinTerm(
 ): string {
   if (side === 'PATERNAL') {
     // Same surname cousins
-    return toGender === 'MALE' ? '堂兄弟' : '堂姐妹';
+    return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.PATERNAL.COUSIN_MALE : EXTENDED_KINSHIP_TERMS.PATERNAL.COUSIN_FEMALE;
   } else {
     // Different surname cousins
-    return toGender === 'MALE' ? '表兄弟' : '表姐妹';
+    return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.MATERNAL.COUSIN_MALE : EXTENDED_KINSHIP_TERMS.MATERNAL.COUSIN_FEMALE;
   }
 }
 
@@ -186,20 +201,20 @@ export function getInLawTerm(
     // Use differentiated terms based on speaker's gender
     if (fromGender === 'MALE') {
       // Male speaker: wife's parent
-      return toGender === 'MALE' ? '岳父' : '岳母';
+      return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.SPOUSE_FAMILY.WIFE_FATHER : EXTENDED_KINSHIP_TERMS.SPOUSE_FAMILY.WIFE_MOTHER;
     } else {
       // Female speaker: husband's parent
-      return toGender === 'MALE' ? '公公' : '婆婆';
+      return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.SPOUSE_FAMILY.HUSBAND_FATHER : EXTENDED_KINSHIP_TERMS.SPOUSE_FAMILY.HUSBAND_MOTHER;
     }
   }
 
   // Sibling's spouse - use differentiated terms
   if (toGender === 'FEMALE') {
     // Sibling's wife
-    return isOlder ? '嫂子' : '弟媳';
+    return isOlder ? EXTENDED_KINSHIP_TERMS.IN_LAW.OLDER_BROTHER_WIFE : EXTENDED_KINSHIP_TERMS.IN_LAW.YOUNGER_BROTHER_WIFE;
   } else {
     // Sibling's husband
-    return isOlder ? '姐夫' : '妹夫';
+    return isOlder ? EXTENDED_KINSHIP_TERMS.IN_LAW.OLDER_SISTER_HUSBAND : EXTENDED_KINSHIP_TERMS.IN_LAW.YOUNGER_SISTER_HUSBAND;
   }
 }
 
@@ -251,7 +266,7 @@ export function getChineseKinshipTerm(
       return getParentChildTerm(fromGender, toGender, false);
 
     case 'SIBLING':
-      return getSiblingTerm(fromGender, toGender, isOlder);
+      return getSiblingTerm(fromGender, toGender, isOlder, siblingRank);
 
     case 'HALF_SIBLING':
       return toGender === 'MALE' ? '同父异母兄弟' : '同父异母姐妹';
@@ -344,16 +359,16 @@ export function getChineseKinshipTerm(
       // Grandparent's sibling: 伯公/叔公/舅公/姑婆/姨婆
       if (side === 'PATERNAL') {
         return toGender === 'MALE'
-          ? (isOlder ? '伯公' : '叔公')
-          : '姑婆';
+          ? (isOlder ? EXTENDED_KINSHIP_TERMS.PATERNAL.GREAT_UNCLE_OLDER : EXTENDED_KINSHIP_TERMS.PATERNAL.GREAT_UNCLE_YOUNGER)
+          : EXTENDED_KINSHIP_TERMS.PATERNAL.GREAT_AUNT;
       } else if (side === 'MATERNAL') {
-        return toGender === 'MALE' ? '舅公' : '姨婆';
+        return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.MATERNAL.GREAT_UNCLE : EXTENDED_KINSHIP_TERMS.MATERNAL.GREAT_AUNT;
       }
       // Fallback without side info - use differentiated terms
       if (toGender === 'MALE') {
-        return isOlder ? '伯公' : '叔公';
+        return isOlder ? EXTENDED_KINSHIP_TERMS.PATERNAL.GREAT_UNCLE_OLDER : EXTENDED_KINSHIP_TERMS.PATERNAL.GREAT_UNCLE_YOUNGER;
       } else {
-        return '姑婆';
+        return EXTENDED_KINSHIP_TERMS.PATERNAL.GREAT_AUNT;
       }
 
     case 'GREAT_GREAT_AUNT_UNCLE':
@@ -410,17 +425,17 @@ export function getChineseKinshipTerm(
       }
 
     case 'CHILD_IN_LAW':
-      return toGender === 'MALE' ? '女婿' : '儿媳';
+      return toGender === 'MALE' ? EXTENDED_KINSHIP_TERMS.SPOUSE_FAMILY.CHILD_IN_LAW_SON : EXTENDED_KINSHIP_TERMS.SPOUSE_FAMILY.CHILD_IN_LAW_DAUGHTER;
 
     case 'SIBLING_IN_LAW':
       // Sibling's spouse - determine based on whether sibling is older or younger
       // isOlder = true means the intermediate sibling is older than fromPerson
       if (toGender === 'FEMALE') {
         // Sibling's wife
-        return isOlder ? '嫂子' : '弟媳';
+        return isOlder ? EXTENDED_KINSHIP_TERMS.IN_LAW.OLDER_BROTHER_WIFE : EXTENDED_KINSHIP_TERMS.IN_LAW.YOUNGER_BROTHER_WIFE;
       } else {
         // Sibling's husband
-        return isOlder ? '姐夫' : '妹夫';
+        return isOlder ? EXTENDED_KINSHIP_TERMS.IN_LAW.OLDER_SISTER_HUSBAND : EXTENDED_KINSHIP_TERMS.IN_LAW.YOUNGER_SISTER_HUSBAND;
       }
 
     case 'SPOUSE_SIBLING':
@@ -430,19 +445,19 @@ export function getChineseKinshipTerm(
         // Male speaking about spouse's sibling
         if (toGender === 'MALE') {
           // Wife's brother: 内兄 (older) / 内弟 (younger)
-          return isOlder ? '内兄' : '内弟';
+          return isOlder ? EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.WIFE_OLDER_BROTHER : EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.WIFE_YOUNGER_BROTHER;
         } else {
           // Wife's sister: 大姨子 (older) / 小姨子 (younger)
-          return isOlder ? '大姨子' : '小姨子';
+          return isOlder ? EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.WIFE_OLDER_SISTER : EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.WIFE_YOUNGER_SISTER;
         }
       } else if (fromGender === 'FEMALE') {
         // Female speaking about spouse's sibling
         if (toGender === 'MALE') {
           // Husband's brother: 大伯子 (older) / 小叔子 (younger)
-          return isOlder ? '大伯子' : '小叔子';
+          return isOlder ? EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.HUSBAND_OLDER_BROTHER : EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.HUSBAND_YOUNGER_BROTHER;
         } else {
           // Husband's sister: 大姑子 (older) / 小姑子 (younger)
-          return isOlder ? '大姑子' : '小姑子';
+          return isOlder ? EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.HUSBAND_OLDER_SISTER : EXTENDED_KINSHIP_TERMS.SPOUSE_SIBLING.HUSBAND_YOUNGER_SISTER;
         }
       }
       return '配偶的兄弟姐妹';
@@ -453,10 +468,10 @@ export function getChineseKinshipTerm(
       // 妯娌: wives of brothers (brothers' wives related to each other)
       if (fromGender === 'MALE' && toGender === 'MALE') {
         // Both are men - they are 连襟 (husbands of sisters)
-        return '连襟';
+        return EXTENDED_KINSHIP_TERMS.MUTUAL_IN_LAW.MALE_MALE;
       } else if (fromGender === 'FEMALE' && toGender === 'FEMALE') {
         // Both are women - they are 妯娌 (wives of brothers)
-        return '妯娌';
+        return EXTENDED_KINSHIP_TERMS.MUTUAL_IN_LAW.FEMALE_FEMALE;
       }
       // Mixed gender - not a traditional term
       return '兄弟姐妹的配偶';
