@@ -383,6 +383,35 @@ export function FamilyTreeCanvas({
             }
           });
       }
+
+      // Lock icon for private persons
+      if (d.isPrivate) {
+        const lockSize = 8;
+        const lockX = NODE_RADIUS - lockSize - 3;
+        const lockY = NODE_RADIUS - lockSize - 3;
+
+        nodeGroup.append('circle')
+          .attr('cx', lockX + lockSize / 2)
+          .attr('cy', lockY + lockSize / 2)
+          .attr('r', lockSize / 2 + 1)
+          .attr('fill', 'rgba(255,255,255,0.9)');
+
+        nodeGroup.append('path')
+          .attr('d', `M${lockX},${lockY + 3}
+                     h${lockSize}
+                     v${lockSize - 3}
+                     h-${lockSize}
+                     z
+                     M${lockX + 1.5},${lockY + 3}
+                     v-${2}
+                     a${lockSize / 2 - 1.5},${lockSize / 2 - 1.5} 0 0 1 ${lockSize - 3} 0
+                     v${2}`)
+          .attr('fill', 'none')
+          .attr('stroke', '#6B7280')
+          .attr('stroke-width', 1)
+          .attr('stroke-linecap', 'round')
+          .attr('stroke-linejoin', 'round');
+      }
     });
 
     // Click handler - select the person
