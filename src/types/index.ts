@@ -108,6 +108,7 @@ export interface GraphNode {
   gender: Gender;
   avatar?: string | null;
   relativeGeneration?: number;
+  isPrivate?: boolean;
   x?: number;
   y?: number;
   fx?: number | null;
