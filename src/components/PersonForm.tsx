@@ -131,11 +131,14 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
     }
   }, [toast, t]);
 
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       handleAvatarUpload(file);
     }
+    e.target.value = '';
   };
 
   const handleRemoveAvatar = () => {
@@ -211,33 +214,33 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
             </div>
 
             <div className="flex-1">
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  disabled={isUploading}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={isUploading}
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      {t('avatar')}
-                    </>
-                  )}
-                </Button>
-              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                onChange={handleFileChange}
+                className="hidden"
+                disabled={isUploading}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    {t('avatar')}
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 

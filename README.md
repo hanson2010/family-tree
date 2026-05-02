@@ -54,11 +54,18 @@ cp .env.local.example .env.local
 ```
 
 4. Configure environment variables in `.env.local`:
-   - `NEXTAUTH_SECRET` - Generate with `openssl rand -base64 32`
+   - `AUTH_SECRET` - Generate with `openssl rand -base64 32`
    - `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` - From GitHub OAuth App settings
    - `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
    - `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON
    - `GOOGLE_AI_API_KEY` - From Google AI Studio
+   - `GOOGLE_AI_MODEL` - Gemini model name (e.g. `gemini-2.5-flash-lite`)
+
+   Alternatively, you can set a single `APP_SECRETS` JSON variable instead of individual secrets:
+   ```
+   APP_SECRETS={"auth_secret":"...","github_client_id":"...","github_client_secret":"...","google_ai_api_key":"..."}
+   ```
+   If `APP_SECRETS` is set, individual env vars are ignored.
 
 5. Run development server:
 ```bash
@@ -84,75 +91,11 @@ npm run dev
    - Authorization callback URL: `http://localhost:3000/api/auth/callback/github`
 3. Copy Client ID and generate Client Secret
 
-## Project Structure
-
-```
-family-tree/
-├── src/
-│   ├── app/                    # Next.js App Router
-│   │   ├── api/               # API routes
-│   │   │   ├── auth/          # NextAuth.js handlers
-│   │   │   ├── avatar/        # Avatar upload with Gemini
-│   │   │   ├── persons/       # Person CRUD
-│   │   │   ├── relationships/ # Relationship CRUD
-│   │   │   └── seed/          # Sample data seeding
-│   │   ├── globals.css        # Global styles
-│   │   ├── layout.tsx         # Root layout
-│   │   ├── page.tsx           # Main page
-│   │   └── providers.tsx      # Context providers
-│   ├── components/            # React components
-│   │   ├── ui/               # shadcn/ui components
-│   │   ├── FamilyTreeCanvas.tsx
-│   │   ├── FilterControls.tsx
-│   │   ├── Header.tsx
-│   │   ├── PersonForm.tsx
-│   │   ├── RelationshipForm.tsx
-│   │   └── Sidebar.tsx
-│   ├── lib/                  # Utility libraries
-│   │   ├── auth.ts          # NextAuth configuration
-│   │   ├── datastore.ts     # Datastore client
-│   │   ├── generation-calculator.ts
-│   │   └── utils.ts         # Utility functions
-│   ├── store/               # Zustand store
-│   └── types/               # TypeScript types
-├── Dockerfile               # Docker configuration
-├── next.config.mjs         # Next.js configuration
-├── tailwind.config.ts      # Tailwind configuration
-└── tsconfig.json           # TypeScript configuration
-```
-
 ## Deployment
 
-### Cloud Run Deployment
+Deployment is handled automatically via Cloud Build CI/CD on push to `main`.
 
-1. Build and push Docker image:
-```bash
-gcloud builds submit --tag gcr.io/PROJECT_ID/family-tree
-```
-
-2. Deploy to Cloud Run:
-```bash
-gcloud run deploy family-tree \
-  --image gcr.io/PROJECT_ID/family-tree \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars NEXTAUTH_URL=https://YOUR_DOMAIN,GOOGLE_CLOUD_PROJECT=PROJECT_ID \
-  --set-secrets NEXTAUTH_SECRET=nextauth-secret:latest,\
-GITHUB_CLIENT_ID=github-client-id:latest,\
-GITHUB_CLIENT_SECRET=github-client-secret:latest,\
-GOOGLE_AI_API_KEY=google-ai-api-key:latest
-```
-
-3. Create secrets in Secret Manager:
-```bash
-echo -n "your-nextauth-secret" | gcloud secrets create nextauth-secret --data-file=-
-echo -n "your-github-client-id" | gcloud secrets create github-client-id --data-file=-
-echo -n "your-github-client-secret" | gcloud secrets create github-client-secret --data-file=-
-echo -n "your-gemini-api-key" | gcloud secrets create google-ai-api-key --data-file=-
-```
-
-### Cloud Build CI/CD (Automatic Deployment from GitHub)
+### Initial Setup
 
 1. **Enable required APIs:**
 ```bash
@@ -161,7 +104,12 @@ gcloud services enable run.googleapis.com
 gcloud services enable secretmanager.googleapis.com
 ```
 
-2. **Grant Cloud Build permissions:**
+2. **Create the combined secret in Secret Manager:**
+```bash
+echo -n '{"auth_secret":"your-auth-secret","github_client_id":"your-github-client-id","github_client_secret":"your-github-client-secret","google_ai_api_key":"your-gemini-api-key"}' | gcloud secrets create app-secrets --data-file=-
+```
+
+3. **Grant Cloud Build permissions:**
 ```bash
 # Get Cloud Build service account
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
@@ -183,42 +131,42 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --role="roles/secretmanager.secretAccessor"
 ```
 
-3. **Create a repository connection (GitHub):**
+4. **Create a repository connection (GitHub):**
 ```bash
 # Create connection
 gcloud builds connections create github family-tree-connection \
-  --region=us-central1
+  --region=us-west1
 
 # Link your GitHub repository
 gcloud builds repos create family-tree-repo \
   --connection=family-tree-connection \
   --repo-name=your-github-repo-name \
-  --region=us-central1
+  --region=us-west1
 ```
 
-4. **Create a build trigger:**
+5. **Create a build trigger:**
 ```bash
 gcloud builds triggers create github \
   --name="family-tree-deploy" \
-  --region=us-central1 \
+  --region=us-west1 \
   --repo-name=your-github-repo-name \
   --repo-owner=your-github-username \
   --branch-pattern="^main$" \
   --build-config=cloudbuild.yaml
 ```
 
-5. **Or configure via Cloud Console:**
-   - Go to **Cloud Build** → **Triggers** → **Create Trigger**
-   - Select your GitHub repository
-   - Set branch pattern (e.g., `^main$`)
-   - Select **Cloud Build configuration file** → `cloudbuild.yaml`
-   - Click **Create**
+Or configure via Cloud Console:
+- Go to **Cloud Build** → **Triggers** → **Create Trigger**
+- Select your GitHub repository
+- Set branch pattern (e.g., `^main$`)
+- Select **Cloud Build configuration file** → `cloudbuild.yaml`
+- Click **Create**
 
 6. **Update NEXTAUTH_URL in cloudbuild.yaml:**
    After first deployment, update the URL in `cloudbuild.yaml`:
    ```yaml
    --set-env-vars
-   - 'NEXTAUTH_URL=https://your-actual-cloud-run-url.a.run.app,GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+   - 'NEXTAUTH_URL=https://your-actual-cloud-run-url.a.run.app,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_AI_MODEL=gemini-2.5-flash-lite'
    ```
 
 ## Usage

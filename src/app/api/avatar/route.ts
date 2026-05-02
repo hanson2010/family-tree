@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { secrets } from '@/lib/secrets';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { ApiResponse, AvatarUploadResponse } from '@/types';
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     let cropSuggestion = { x: 25, y: 15, width: 50, height: 50 }; // Default crop
 
     try {
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
+      const genAI = new GoogleGenerativeAI(secrets.googleAiApiKey);
       const model = genAI.getGenerativeModel({ model: process.env.GOOGLE_AI_MODEL || DEFAULT_GOOGLE_AI_MODEL });
 
       const result = await model.generateContent([

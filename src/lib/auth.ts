@@ -1,19 +1,20 @@
 import NextAuth from 'next-auth';
 import GitHub from 'next-auth/providers/github';
 import { KINDS, getEntity, saveEntity } from '@/lib/firestore';
+import { secrets } from '@/lib/secrets';
 import type { User } from '@/types';
 
 // Full auth configuration with Datastore integration for API routes
 // This runs in Node.js runtime (not Edge Runtime)
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  // Support both AUTH_SECRET (v5) and NEXTAUTH_SECRET (v4) for backwards compatibility
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  
+  secret: secrets.authSecret,
   // Required for proper host detection in development and behind proxies
   trustHost: true,
   providers: [
     GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      clientId: secrets.githubClientId,
+      clientSecret: secrets.githubClientSecret,
       issuer: 'https://github.com',
       authorization: { params: { scope: 'read:user user:email' } },
     }),

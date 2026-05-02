@@ -1,15 +1,16 @@
 import NextAuth from 'next-auth';
 import GitHub from 'next-auth/providers/github';
+import { secrets } from '@/lib/secrets';
 
 // Edge-compatible auth configuration (no Node.js dependencies)
 // This is used by middleware which runs in Edge Runtime
 export const { auth: authMiddleware, handlers } = NextAuth({
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  secret: secrets.authSecret,
   trustHost: true,
   providers: [
     GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      clientId: secrets.githubClientId,
+      clientSecret: secrets.githubClientSecret,
       issuer: 'https://github.com',
     }),
   ],
