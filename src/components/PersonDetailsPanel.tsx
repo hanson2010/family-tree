@@ -4,154 +4,229 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { useLocale } from '@/components/LocaleProvider';
 import { useSession } from 'next-auth/react';
-import type { Person } from '@/types';
-import { Gender } from '@/types';
-import { Edit, Trash2, User, GitBranch } from 'lucide-react';
+import { PersonAvatar } from '@/components/PersonAvatar';
+import type { Person, Relationship } from '@/types';
+import { Gender, RelationshipType } from '@/types';
+import type { TranslationKey } from '@/lib/i18n';
+import { GitBranch, Lock, MousePointerClick, Pencil, Trash2 } from 'lucide-react';
 
 interface PersonDetailsPanelProps {
   person: Person | null;
+  persons: Person[];
+  relationships: Relationship[];
+  /** Whether the signed-in user may edit and delete this person */
+  canEdit: boolean;
+  onSelectPerson: (personId: string) => void;
   onEdit: (person: Person) => void;
   onDelete: (person: Person) => void;
   onChangeRelationships?: (person: Person) => void;
 }
 
-export function PersonDetailsPanel({ person, onEdit, onDelete, onChangeRelationships }: PersonDetailsPanelProps) {
-  const { t } = useLocale();
+interface RelativeGroup {
+  title: string;
+  members: Array<{ person: Person; note?: string }>;
+}
+
+const OTHER_TYPE_LABELS: Partial<Record<RelationshipType, TranslationKey>> = {
+  [RelationshipType.CONCUBINE]: 'concubine',
+  [RelationshipType.BETROTHED]: 'betrothed',
+  [RelationshipType.ADOPTIVE_PARENT]: 'adoptiveParent',
+  [RelationshipType.FOSTER_PARENT]: 'fosterParent',
+  [RelationshipType.SWORN_SIBLING]: 'swornSibling',
+};
+
+const byBirthYear = (a: Person, b: Person) => (a.birthYear ?? Infinity) - (b.birthYear ?? Infinity);
+
+export function PersonDetailsPanel({
+  person,
+  persons,
+  relationships,
+  canEdit,
+  onSelectPerson,
+  onEdit,
+  onDelete,
+  onChangeRelationships,
+}: PersonDetailsPanelProps) {
+  const { t, locale } = useLocale();
   const { status } = useSession();
   const isAuthenticated = status === 'authenticated';
 
+  const groups = React.useMemo<RelativeGroup[]>(() => {
+    if (!person) return [];
+
+    const byId = new Map(persons.map((p) => [p.id, p]));
+    const parents: Person[] = [];
+    const spouses: Person[] = [];
+    const children: Person[] = [];
+    const siblings = new Map<string, Person>();
+    const others: RelativeGroup['members'] = [];
+
+    for (const rel of relationships) {
+      const isA = rel.personAId === person.id;
+      if (!isA && rel.personBId !== person.id) continue;
+      const other = byId.get(isA ? rel.personBId : rel.personAId);
+      if (!other) continue;
+
+      switch (rel.type) {
+        case RelationshipType.PARENT_CHILD:
+          // Person A is the parent of person B
+          (isA ? children : parents).push(other);
+          break;
+        case RelationshipType.SPOUSE:
+          spouses.push(other);
+          break;
+        case RelationshipType.SIBLING:
+        case RelationshipType.HALF_SIBLING:
+          siblings.set(other.id, other);
+          break;
+        default: {
+          const labelKey = OTHER_TYPE_LABELS[rel.type];
+          others.push({ person: other, note: labelKey ? t(labelKey) : rel.type });
+        }
+      }
+    }
+
+    // Children of the same parents are siblings even without an explicit relationship
+    const parentIds = new Set(parents.map((p) => p.id));
+    for (const rel of relationships) {
+      if (rel.type !== RelationshipType.PARENT_CHILD) continue;
+      if (!parentIds.has(rel.personAId) || rel.personBId === person.id) continue;
+      const sibling = byId.get(rel.personBId);
+      if (sibling) siblings.set(sibling.id, sibling);
+    }
+
+    const toMembers = (list: Person[]) => list.map((p) => ({ person: p }));
+    return [
+      { title: t('parents'), members: toMembers(parents) },
+      { title: t('spouses'), members: toMembers(spouses) },
+      { title: t('siblings'), members: toMembers(Array.from(siblings.values()).sort(byBirthYear)) },
+      { title: t('children'), members: toMembers(children.sort(byBirthYear)) },
+      { title: t('otherRelations'), members: others },
+    ].filter((group) => group.members.length > 0);
+  }, [person, persons, relationships, t]);
+
   if (!person) {
     return (
-      <div className="bg-card border rounded-lg p-4">
-        <div className="text-center text-muted-foreground">
-          <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
-          <p>{t('selectPerson')}</p>
-        </div>
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+        <MousePointerClick className="h-8 w-8 opacity-50" />
+        <p className="text-sm">{t('selectPersonHint')}</p>
       </div>
     );
   }
 
   const formatDate = (year?: number | null, month?: number | null, day?: number | null) => {
     if (!year && !month && !day) return null;
-    const parts: string[] = [];
-    if (year) parts.push(`${year}${t('year')}`);
-    if (month) parts.push(`${month}${t('month')}`);
-    if (day) parts.push(`${day}${t('day')}`);
-    return parts.join('');
+    if (locale === 'zh') {
+      return `${year ? `${year}年` : ''}${month ? `${month}月` : ''}${day ? `${day}日` : ''}`;
+    }
+    return [year, month, day]
+      .filter(Boolean)
+      .map((part) => String(part).padStart(2, '0'))
+      .join('-');
   };
 
   const birthDate = formatDate(person.birthYear, person.birthMonth, person.birthDay);
   const deathDate = formatDate(person.deathYear, person.deathMonth, person.deathDay);
 
-  const getGenderLabel = (gender: Gender) => {
-    switch (gender) {
-      case Gender.MALE:
-        return t('male');
-      case Gender.FEMALE:
-        return t('female');
-      default:
-        return t('unknown');
-    }
-  };
+  const genderLabel =
+    person.gender === Gender.MALE ? t('male') : person.gender === Gender.FEMALE ? t('female') : t('unknown');
+
+  const facts = [
+    { label: t('gender'), value: genderLabel },
+    { label: t('courtesyName'), value: person.courtesyName },
+    { label: t('artName'), value: person.artName },
+    { label: t('birthDate'), value: birthDate },
+    { label: t('deathDate'), value: deathDate },
+  ].filter((fact) => fact.value);
 
   return (
-    <div className="bg-card border rounded-lg p-4 space-y-4">
-      {/* Avatar and Name */}
-      <div className="flex items-start gap-4">
-        {person.avatar ? (
-          <img
-            src={person.avatar}
-            alt={person.name}
-            className="w-16 h-16 rounded-full object-cover"
-          />
+    <div className="space-y-6 p-4">
+      {/* Identity */}
+      <div className="flex items-center gap-4">
+        <PersonAvatar person={person} className="h-16 w-16 border-2 border-card text-2xl shadow-sm" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display break-words text-xl font-semibold leading-tight">{person.name}</h2>
+          {(person.birthYear || person.deathYear) && (
+            <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+              {person.birthYear ?? '?'} – {person.deathYear ?? ''}
+            </p>
+          )}
+          {person.isPrivate && (
+            <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              <Lock className="h-3 w-3" />
+              {t('private')}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Facts */}
+      <dl className="divide-y rounded-lg border bg-card text-sm">
+        {facts.map((fact) => (
+          <div key={fact.label} className="flex justify-between gap-4 px-3 py-2">
+            <dt className="shrink-0 text-muted-foreground">{fact.label}</dt>
+            <dd className="text-right">{fact.value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* Relatives */}
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('relatives')}</h3>
+        {groups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('noRelatives')}</p>
         ) : (
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-            <User className="w-8 h-8 text-muted-foreground" />
-          </div>
-        )}
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg">{person.name}</h3>
-          {person.courtesyName && (
-            <p className="text-sm text-muted-foreground">
-              {t('courtesyName')}: {person.courtesyName}
-            </p>
-          )}
-          {person.artName && (
-            <p className="text-sm text-muted-foreground">
-              {t('artName')}: {person.artName}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Details */}
-      <div className="space-y-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">{t('gender')}</span>
-          <span>{getGenderLabel(person.gender)}</span>
-        </div>
-
-        {birthDate && (
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">{t('birthDate')}</span>
-            <span>{birthDate}</span>
-          </div>
-        )}
-
-        {deathDate && (
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">{t('deathDate')}</span>
-            <span>{deathDate}</span>
-          </div>
-        )}
-
-        {person.relativeGeneration !== undefined && (
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">{t('generationRange')}</span>
-            <span>{person.relativeGeneration}</span>
-          </div>
-        )}
-
-        {person.isPrivate && (
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">{t('isPrivate')}</span>
-            <span className="text-amber-600">✓</span>
-          </div>
+          groups.map((group) => (
+            <div key={group.title} className="space-y-1">
+              <p className="text-xs text-muted-foreground">{group.title}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {group.members.map(({ person: relative, note }, index) => (
+                  <button
+                    key={`${relative.id}-${index}`}
+                    type="button"
+                    onClick={() => onSelectPerson(relative.id)}
+                    className="flex max-w-full items-center gap-1.5 rounded-full border bg-card py-0.5 pl-0.5 pr-2.5 text-sm transition-colors hover:border-foreground/30 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <PersonAvatar person={relative} className="h-6 w-6 text-[11px]" />
+                    <span className="truncate">{relative.name}</span>
+                    {note && <span className="shrink-0 text-xs text-muted-foreground">{note}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </div>
 
-      {/* Actions - Only show for authenticated users */}
+      {/* Actions */}
       {isAuthenticated && (
-        <div className="space-y-2 pt-2">
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => onEdit(person)}
-            >
-              <Edit className="w-4 h-4 mr-1" />
-              {t('edit')}
+        <div className="space-y-2 border-t pt-4">
+          {canEdit && (
+            <Button variant="outline" size="sm" className="w-full justify-start bg-card" onClick={() => onEdit(person)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              {t('editPerson')}
             </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="flex-1"
-              onClick={() => onDelete(person)}
-            >
-              <Trash2 className="w-4 h-4 mr-1" />
-              {t('delete')}
-            </Button>
-          </div>
+          )}
           {onChangeRelationships && (
             <Button
               variant="outline"
               size="sm"
-              className="w-full"
+              className="w-full justify-start bg-card"
               onClick={() => onChangeRelationships(person)}
             >
-              <GitBranch className="w-4 h-4 mr-1" />
+              <GitBranch className="mr-2 h-4 w-4" />
               {t('changeRelationship')}
+            </Button>
+          )}
+          {canEdit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => onDelete(person)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {t('delete')}
             </Button>
           )}
         </div>

@@ -1,31 +1,18 @@
 import NextAuth from 'next-auth';
-import GitHub from 'next-auth/providers/github';
+import { googleProvider } from '@/lib/google-provider';
 import { secrets } from '@/lib/secrets';
 
-// Edge-compatible auth configuration (no Node.js dependencies)
-// This is used by middleware which runs in Edge Runtime
+// Auth configuration without database access, used by the proxy to read the session.
 export const { auth: authMiddleware, handlers } = NextAuth({
   secret: secrets.authSecret,
   trustHost: true,
-  providers: [
-    GitHub({
-      clientId: secrets.githubClientId,
-      clientSecret: secrets.githubClientSecret,
-      issuer: 'https://github.com',
-    }),
-  ],
+  providers: [googleProvider()],
   callbacks: {
     async session({ session, token }) {
       if (token?.sub) {
         session.user.id = token.sub;
       }
       return session;
-    },
-    async jwt({ token, account }) {
-      if (account) {
-        token.sub = account.providerAccountId;
-      }
-      return token;
     },
   },
   pages: {

@@ -1,32 +1,59 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useCallback, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSession, signIn } from 'next-auth/react';
+import { ChevronRight, Database, Loader2, UserPlus } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FamilyTreeCanvas } from '@/components/FamilyTreeCanvas';
 import { LeftPanel } from '@/components/LeftPanel';
 import { PersonDetailsPanel } from '@/components/PersonDetailsPanel';
+import { PersonAvatar } from '@/components/PersonAvatar';
 import { PersonForm } from '@/components/PersonForm';
 import { AddRelationshipForm } from '@/components/AddRelationshipForm';
 import { QuickRelationshipForm } from '@/components/QuickRelationshipForm';
 import { ChangeRelationshipForm } from '@/components/ChangeRelationshipForm';
+import { GoogleIcon } from '@/components/GoogleIcon';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
+import { cn } from '@/lib/utils';
 import type { Person, Relationship, GenerationRange, PersonFormData, RelationshipFormData, Gender } from '@/types';
 import { GenerationCalculator } from '@/lib/generation-calculator';
+
+const SELECTED_PERSON_KEY = 'selectedPersonId';
+
+function readStoredPersonId(): string | null {
+  try {
+    return localStorage.getItem(SELECTED_PERSON_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export default function HomePage() {
   const { data: session, status } = useSession();
   const { toast } = useToast();
   const { t } = useLocale();
+  const isAuthenticated = status === 'authenticated';
 
   // State
   const [persons, setPersons] = useState<Person[]>([]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [initialPersonSet, setInitialPersonSet] = useState(false);
+
+  // Panels shown as drawers on small screens
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   // Form state
   const [isPersonFormOpen, setIsPersonFormOpen] = useState(false);
@@ -40,6 +67,9 @@ export default function HomePage() {
   const [isQuickRelationshipFormOpen, setIsQuickRelationshipFormOpen] = useState(false);
   const [isDeleteRelationshipFormOpen, setIsDeleteRelationshipFormOpen] = useState(false);
 
+  const [personToDelete, setPersonToDelete] = useState<Person | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -52,9 +82,8 @@ export default function HomePage() {
   const [filterGenders, setFilterGenders] = useState<Gender[]>([]);
   const [filterLivingInYear, setFilterLivingInYear] = useState<number | null>(null);
 
-  // Fetch data
+  // Fetch data. The loading screen is only shown for the first load, so the tree stays in place on refresh.
   const fetchData = useCallback(async () => {
-    setIsLoading(true);
     try {
       const [personsRes, relationshipsRes] = await Promise.all([
         fetch('/api/persons'),
@@ -82,23 +111,51 @@ export default function HomePage() {
     }
   }, [toast, t]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
 
-  // Select a random public person as center for anonymous users
   useEffect(() => {
-    if (!isLoading && !initialPersonSet && persons.length > 0) {
-      // Get public persons only
-      const publicPersons = persons.filter(p => !p.isPrivate);
-      if (publicPersons.length > 0) {
-        // Select a random public person
-        const randomIndex = Math.floor(Math.random() * publicPersons.length);
-        setSelectedPersonId(publicPersons[randomIndex].id);
-      }
-      setInitialPersonSet(true);
+    fetchDataRef.current();
+  }, []);
+
+  const selectPerson = useCallback((personId: string) => {
+    setSelectedPersonId(personId);
+    setIsMenuOpen(false);
+    try {
+      localStorage.setItem(SELECTED_PERSON_KEY, personId);
+    } catch {
+      // Storage unavailable; the selection just won't be remembered
     }
-  }, [isLoading, persons, initialPersonSet]);
+  }, []);
+
+  // Make sure someone is always at the center: the person viewed last time, otherwise a random one
+  useEffect(() => {
+    if (isLoading || persons.length === 0) return;
+    if (selectedPersonId && persons.some((p) => p.id === selectedPersonId)) return;
+
+    const storedId = readStoredPersonId();
+    if (storedId && persons.some((p) => p.id === storedId)) {
+      setSelectedPersonId(storedId);
+      return;
+    }
+
+    const publicPersons = persons.filter((p) => !p.isPrivate);
+    const candidates = publicPersons.length > 0 ? publicPersons : persons;
+    setSelectedPersonId(candidates[Math.floor(Math.random() * candidates.length)].id);
+  }, [isLoading, persons, selectedPersonId]);
+
+  // Close drawers with Escape
+  useEffect(() => {
+    if (!isMenuOpen && !isDetailsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false);
+        setIsDetailsOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMenuOpen, isDetailsOpen]);
 
   // Calculate relative generations
   const visiblePersons = React.useMemo(() => {
@@ -151,29 +208,32 @@ export default function HomePage() {
   }, [visiblePersons, session, filterGenders, filterLivingInYear]);
 
   // Handlers
-  const handleSearchChange = useCallback((query: string) => {
-    setSearchQuery(query);
-  }, []);
+  const requireSignIn = useCallback(() => {
+    if (status === 'authenticated') return true;
+    toast({
+      variant: 'destructive',
+      title: t('authenticationRequired'),
+      description: t('pleaseSignIn'),
+    });
+    return false;
+  }, [status, toast, t]);
 
   const handleAddPerson = useCallback(() => {
-    if (status !== 'authenticated') {
-      toast({
-        variant: 'destructive',
-        title: t('authenticationRequired'),
-        description: t('pleaseSignIn'),
-      });
-      return;
-    }
+    if (!requireSignIn()) return;
+    setIsMenuOpen(false);
     setPersonFormMode('create');
     setEditingPerson(null);
     setIsPersonFormOpen(true);
-  }, [status, toast, t]);
+  }, [requireSignIn]);
 
+  // Only the creator of a person can change them
+  const userId = session?.user?.id;
   const handleEditPerson = useCallback((person: Person) => {
+    if (!userId || person.createdBy !== userId) return;
     setPersonFormMode('edit');
     setEditingPerson(person);
     setIsPersonFormOpen(true);
-  }, []);
+  }, [userId]);
 
   const handlePersonFormSubmit = useCallback(async (data: PersonFormData) => {
     const url = personFormMode === 'create' ? '/api/persons' : `/api/persons/${editingPerson?.id}`;
@@ -190,22 +250,19 @@ export default function HomePage() {
       throw new Error(error.error || t('failedToSave'));
     }
 
-    fetchData();
-  }, [personFormMode, editingPerson, fetchData, t]);
+    // Put a newly added person at the center, once the list contains them
+    const createdId = personFormMode === 'create' ? (await response.json()).data?.id : null;
+    await fetchData();
+    if (createdId) selectPerson(createdId);
+  }, [personFormMode, editingPerson, fetchData, selectPerson, t]);
 
   const handleAddRelationship = useCallback(() => {
-    if (status !== 'authenticated') {
-      toast({
-        variant: 'destructive',
-        title: t('authenticationRequired'),
-        description: t('pleaseSignIn'),
-      });
-      return;
-    }
+    if (!requireSignIn()) return;
+    setIsMenuOpen(false);
     setRelationshipFormMode('create');
     setEditingRelationship(null);
     setIsRelationshipFormOpen(true);
-  }, [status, toast, t]);
+  }, [requireSignIn]);
 
   const handleRelationshipFormSubmit = useCallback(async (data: RelationshipFormData) => {
     const url = relationshipFormMode === 'create' ? '/api/relationships' : `/api/relationships/${editingRelationship?.id}`;
@@ -226,28 +283,16 @@ export default function HomePage() {
   }, [relationshipFormMode, editingRelationship, fetchData, t]);
 
   const handleQuickAddRelationship = useCallback(() => {
-    if (status !== 'authenticated') {
-      toast({
-        variant: 'destructive',
-        title: t('authenticationRequired'),
-        description: t('pleaseSignIn'),
-      });
-      return;
-    }
+    if (!requireSignIn()) return;
+    setIsMenuOpen(false);
     setIsQuickRelationshipFormOpen(true);
-  }, [status, toast, t]);
+  }, [requireSignIn]);
 
   const handleDeleteRelationship = useCallback((_person: Person) => {
-    if (status !== 'authenticated') {
-      toast({
-        variant: 'destructive',
-        title: t('authenticationRequired'),
-        description: t('pleaseSignIn'),
-      });
-      return;
-    }
+    if (!requireSignIn()) return;
+    setIsDetailsOpen(false);
     setIsDeleteRelationshipFormOpen(true);
-  }, [status, toast, t]);
+  }, [requireSignIn]);
 
   const handleDeleteRelationshipConfirm = useCallback(async (relationshipId: string) => {
     const response = await fetch(`/api/relationships/${relationshipId}`, {
@@ -256,11 +301,11 @@ export default function HomePage() {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || '删除关系失败');
+      throw new Error(error.error || t('failedToDeleteRelationship'));
     }
 
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, t]);
 
   const handleUpdateRelationship = useCallback(async (relationshipId: string, data: RelationshipFormData) => {
     const response = await fetch(`/api/relationships/${relationshipId}`, {
@@ -271,21 +316,14 @@ export default function HomePage() {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || '更新关系失败');
+      throw new Error(error.error || t('failedToUpdateRelationship'));
     }
 
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, t]);
 
   const handleSeedData = useCallback(async () => {
-    if (status !== 'authenticated') {
-      toast({
-        variant: 'destructive',
-        title: t('authenticationRequired'),
-        description: t('pleaseSignIn'),
-      });
-      return;
-    }
+    if (!requireSignIn()) return;
 
     try {
       const response = await fetch('/api/seed', { method: 'POST' });
@@ -304,55 +342,50 @@ export default function HomePage() {
       toast({
         variant: 'destructive',
         title: t('error'),
-        description: t('failedToLoad'),
+        description: t('failedToSave'),
       });
     }
-  }, [status, toast, fetchData, t]);
+  }, [requireSignIn, toast, fetchData, t]);
 
   const handleRefresh = useCallback(() => {
-    // Check if any filters are active
-    const hasActiveFilters = filterGenders.length > 0 || filterLivingInYear !== null;
-
-    // Get persons that satisfy all filters
-    const eligiblePersons = hasActiveFilters
-      ? persons.filter(person => {
-          // Gender filter
-          if (filterGenders.length > 0 && !filterGenders.includes(person.gender)) {
-            return false;
-          }
-          // Living in year filter
-          if (filterLivingInYear !== null) {
-            if (person.birthYear && person.birthYear > filterLivingInYear) {
-              return false;
-            }
-            if (person.deathYear && person.deathYear < filterLivingInYear) {
-              return false;
-            }
-          }
-          return true;
-        })
-      : persons;
+    // Pick among the persons that satisfy the active filters
+    const eligiblePersons = persons.filter(person => {
+      if (person.id === selectedPersonId && persons.length > 1) {
+        return false;
+      }
+      if (filterGenders.length > 0 && !filterGenders.includes(person.gender)) {
+        return false;
+      }
+      if (filterLivingInYear !== null) {
+        if (person.birthYear && person.birthYear > filterLivingInYear) {
+          return false;
+        }
+        if (person.deathYear && person.deathYear < filterLivingInYear) {
+          return false;
+        }
+      }
+      return true;
+    });
 
     if (eligiblePersons.length > 0) {
       const randomIndex = Math.floor(Math.random() * eligiblePersons.length);
-      const randomPerson = eligiblePersons[randomIndex];
-      setSelectedPersonId(randomPerson.id);
-      setSearchQuery(randomPerson.name);
+      setSearchQuery('');
+      selectPerson(eligiblePersons[randomIndex].id);
     }
-  }, [persons, filterGenders, filterLivingInYear]);
+  }, [persons, selectedPersonId, filterGenders, filterLivingInYear, selectPerson]);
 
-  const handleDeletePerson = useCallback(async (person: Person) => {
-    if (status !== 'authenticated') {
-      toast({
-        variant: 'destructive',
-        title: t('authenticationRequired'),
-        description: t('pleaseSignIn'),
-      });
-      return;
-    }
+  // Deleting asks for confirmation first
+  const handleDeletePerson = useCallback((person: Person) => {
+    if (!requireSignIn()) return;
+    setPersonToDelete(person);
+  }, [requireSignIn]);
+
+  const handleDeletePersonConfirm = useCallback(async () => {
+    if (!personToDelete) return;
+    setIsDeleting(true);
 
     try {
-      const response = await fetch(`/api/persons/${person.id}`, {
+      const response = await fetch(`/api/persons/${personToDelete.id}`, {
         method: 'DELETE',
       });
 
@@ -361,23 +394,27 @@ export default function HomePage() {
       }
 
       toast({
-        title: t('personUpdated'),
-        description: `${person.name} has been deleted`,
+        title: t('personDeleted'),
+        description: personToDelete.name,
       });
 
-      if (selectedPersonId === person.id) {
+      if (selectedPersonId === personToDelete.id) {
         setSelectedPersonId(null);
+        setIsDetailsOpen(false);
       }
+      setPersonToDelete(null);
 
       fetchData();
     } catch (error) {
       toast({
         variant: 'destructive',
         title: t('error'),
-        description: t('failedToSave'),
+        description: t('failedToDelete'),
       });
+    } finally {
+      setIsDeleting(false);
     }
-  }, [status, toast, fetchData, t, selectedPersonId]);
+  }, [personToDelete, toast, fetchData, t, selectedPersonId]);
 
   // Get the currently selected/centered person
   const selectedPerson = React.useMemo(() => {
@@ -385,70 +422,138 @@ export default function HomePage() {
     return persons.find(p => p.id === selectedPersonId) || null;
   }, [persons, selectedPersonId]);
 
+  const canEditSelected = !!selectedPerson && !!userId && selectedPerson.createdBy === userId;
+
+  const drawerBase =
+    'absolute inset-y-0 z-40 w-80 max-w-[85vw] overflow-y-auto bg-background shadow-xl transition-[transform,visibility] duration-200 lg:visible lg:static lg:z-auto lg:w-72 lg:shrink-0 lg:translate-x-0 lg:shadow-none';
+
   return (
-    <div className="flex h-screen bg-background">
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+    <div className="flex h-dvh flex-col bg-background">
+      <Header onOpenMenu={() => setIsMenuOpen(true)} />
 
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left panel - Search */}
-          <div className="hidden lg:block w-72 border-r p-4 overflow-y-auto">
-            <LeftPanel
-              searchQuery={searchQuery}
-              onSearchChange={handleSearchChange}
-              onAddPerson={handleAddPerson}
-              onAddRelationship={handleAddRelationship}
-              onQuickAddRelationship={handleQuickAddRelationship}
-              onRefresh={handleRefresh}
-              onSeedData={handleSeedData}
-              persons={persons}
-              onSelectPerson={setSelectedPersonId}
-              filterGenders={filterGenders}
-              filterLivingInYear={filterLivingInYear}
-              onFilterGendersChange={setFilterGenders}
-              onFilterLivingInYearChange={setFilterLivingInYear}
-              onFilterReset={() => {
-                setFilterGenders([]);
-                setFilterLivingInYear(null);
-              }}
-            />
-          </div>
+      <div className="relative flex min-h-0 flex-1">
+        {/* Backdrop behind an open drawer */}
+        {(isMenuOpen || isDetailsOpen) && (
+          <div
+            className="absolute inset-0 z-30 bg-black/30 lg:hidden"
+            onClick={() => {
+              setIsMenuOpen(false);
+              setIsDetailsOpen(false);
+            }}
+          />
+        )}
 
-          {/* Canvas */}
-          {isLoading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        {/* Left panel - search, filters, actions */}
+        <aside className={cn(drawerBase, 'left-0 border-r', isMenuOpen ? 'translate-x-0' : 'invisible -translate-x-full')}>
+          <LeftPanel
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onAddPerson={handleAddPerson}
+            onAddRelationship={handleAddRelationship}
+            onQuickAddRelationship={handleQuickAddRelationship}
+            onRefresh={handleRefresh}
+            persons={persons}
+            onSelectPerson={selectPerson}
+            filterGenders={filterGenders}
+            filterLivingInYear={filterLivingInYear}
+            generationRange={generationRange}
+            onFilterGendersChange={setFilterGenders}
+            onFilterLivingInYearChange={setFilterLivingInYear}
+            onGenerationRangeChange={setGenerationRange}
+            onFilterReset={() => {
+              setFilterGenders([]);
+              setFilterLivingInYear(null);
+            }}
+          />
+        </aside>
+
+        {/* Canvas */}
+        <main className="relative min-w-0 flex-1">
+          {isLoading || (persons.length > 0 && !selectedPerson) ? (
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
             </div>
           ) : persons.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-muted-foreground mb-4">{t('noPersons')}</p>
-                {status !== 'authenticated' && (
-                  <p className="text-sm text-muted-foreground">{t('signInToAdd')}</p>
-                )}
+            <div className="tree-canvas flex h-full items-center justify-center p-6">
+              <div className="max-w-sm rounded-xl border bg-card p-8 text-center shadow-sm">
+                <span className="font-display mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-brand text-2xl font-semibold text-brand-foreground">
+                  族
+                </span>
+                <h2 className="font-display mt-4 text-xl font-semibold">{t('emptyTitle')}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {isAuthenticated ? t('emptyDescription') : t('signInToAdd')}
+                </p>
+                <div className="mt-6 flex flex-col gap-2">
+                  {isAuthenticated ? (
+                    <>
+                      <Button onClick={handleAddPerson}>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        {t('addPerson')}
+                      </Button>
+                      <Button variant="outline" onClick={handleSeedData}>
+                        <Database className="mr-2 h-4 w-4" />
+                        {t('seedData')}
+                      </Button>
+                    </>
+                  ) : (
+                    status !== 'loading' && (
+                      <Button variant="outline" onClick={() => signIn('google')}>
+                        <GoogleIcon className="mr-2 h-4 w-4" />
+                        {t('signInWithGoogle')}
+                      </Button>
+                    )
+                  )}
+                </div>
               </div>
             </div>
           ) : (
             <FamilyTreeCanvas
               persons={filteredPersons}
+              allPersons={persons}
               relationships={relationships}
               selectedPersonId={selectedPersonId}
-              onSelectPerson={setSelectedPersonId}
+              onSelectPerson={selectPerson}
               onEditPerson={handleEditPerson}
             />
           )}
 
-          {/* Right panel - Person details */}
-          <div className="hidden lg:block w-72 border-l p-4 overflow-y-auto">
-            <PersonDetailsPanel
-              person={selectedPerson}
-              onEdit={handleEditPerson}
-              onDelete={handleDeletePerson}
-              onChangeRelationships={handleDeleteRelationship}
-            />
-          </div>
-        </div>
+          {/* Selected person bar, in place of the details panel on small screens */}
+          {selectedPerson && (
+            <button
+              type="button"
+              onClick={() => setIsDetailsOpen(true)}
+              className="absolute inset-x-3 bottom-3 flex items-center gap-3 rounded-xl border bg-card p-2.5 text-left shadow-lg lg:hidden"
+            >
+              <PersonAvatar person={selectedPerson} className="h-10 w-10" />
+              <span className="min-w-0 flex-1">
+                <span className="font-display block truncate font-semibold">{selectedPerson.name}</span>
+                {(selectedPerson.birthYear || selectedPerson.deathYear) && (
+                  <span className="block text-xs tabular-nums text-muted-foreground">
+                    {selectedPerson.birthYear ?? '?'} – {selectedPerson.deathYear ?? ''}
+                  </span>
+                )}
+              </span>
+              <span className="flex items-center text-sm text-muted-foreground">
+                {t('details')}
+                <ChevronRight className="h-4 w-4" />
+              </span>
+            </button>
+          )}
+        </main>
+
+        {/* Right panel - person details */}
+        <aside className={cn(drawerBase, 'right-0 border-l', isDetailsOpen ? 'translate-x-0' : 'invisible translate-x-full')}>
+          <PersonDetailsPanel
+            person={selectedPerson}
+            persons={persons}
+            relationships={relationships}
+            canEdit={canEditSelected}
+            onSelectPerson={selectPerson}
+            onEdit={handleEditPerson}
+            onDelete={handleDeletePerson}
+            onChangeRelationships={handleDeleteRelationship}
+          />
+        </aside>
       </div>
 
       {/* Person form dialog */}
@@ -488,6 +593,27 @@ export default function HomePage() {
         onUpdate={handleUpdateRelationship}
         onClose={() => setIsDeleteRelationshipFormOpen(false)}
       />
+
+      {/* Delete person confirmation */}
+      <Dialog open={!!personToDelete} onOpenChange={(open) => !open && !isDeleting && setPersonToDelete(null)}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>{t('deletePersonTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('deletePersonConfirm').replace('{name}', personToDelete?.name ?? '')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setPersonToDelete(null)} disabled={isDeleting}>
+              {t('cancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleDeletePersonConfirm} disabled={isDeleting}>
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

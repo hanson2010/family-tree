@@ -80,7 +80,6 @@ export interface Relationship {
 
 export interface User {
   id: string;
-  githubId: string;
   email: string | null;
   name: string | null;
   avatarUrl: string | null;

@@ -18,7 +18,48 @@ export const translations = {
     appName: '家谱',
     signIn: '登录',
     signOut: '登出',
-    signInWithGitHub: '使用 GitHub 登录',
+    signInWithGoogle: '使用 Google 登录',
+    signInSubtitle: '登录后可新增和编辑家族成员',
+    signInError: '登录时出现问题，请重试。',
+    backToTree: '返回家谱',
+    authErrorTitle: '登录失败',
+    authErrorConfiguration: '服务器配置有误。',
+    authErrorAccessDenied: '您没有登录权限。',
+    authErrorDefault: '登录时出现问题，请重试。',
+    tryAgain: '重试',
+    openMenu: '搜索与操作',
+    details: '详情',
+
+    // Canvas
+    legend: '图例',
+    otherRelations: '其他关系',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    fitView: '适应窗口',
+    self: '本人',
+    private: '私人',
+
+    // Details panel
+    selectPersonHint: '点击图中的人物查看详情',
+    relatives: '亲属',
+    parents: '父母',
+    spouses: '配偶',
+    children: '子女',
+    siblings: '兄弟姐妹',
+    noRelatives: '暂无亲属关系',
+    deletePersonTitle: '删除人物',
+    deletePersonConfirm: '确定要删除“{name}”吗？此操作无法撤销。',
+    personDeleted: '人物已删除',
+    failedToDelete: '删除失败',
+
+    // Panel sections
+    actions: '操作',
+    clearSearch: '清除',
+    emptyTitle: '家谱还是空的',
+    emptyDescription: '添加第一位家族成员，或生成示例数据来体验。',
+    nameRequired: '请输入姓名',
+    avatarUploaded: '头像已上传',
+    avatarUploadFailed: '头像上传失败',
 
     // Navigation
     menu: '菜单',
@@ -150,7 +191,48 @@ export const translations = {
     appName: 'Family Tree',
     signIn: 'Sign In',
     signOut: 'Sign Out',
-    signInWithGitHub: 'Sign in with GitHub',
+    signInWithGoogle: 'Sign in with Google',
+    signInSubtitle: 'Sign in to add and edit family members',
+    signInError: 'There was a problem signing you in. Please try again.',
+    backToTree: 'Back to the tree',
+    authErrorTitle: 'Sign-in failed',
+    authErrorConfiguration: 'There is a problem with the server configuration.',
+    authErrorAccessDenied: 'You do not have permission to sign in.',
+    authErrorDefault: 'There was a problem signing you in. Please try again.',
+    tryAgain: 'Try again',
+    openMenu: 'Search and actions',
+    details: 'Details',
+
+    // Canvas
+    legend: 'Legend',
+    otherRelations: 'Other relations',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    fitView: 'Fit to view',
+    self: 'Self',
+    private: 'Private',
+
+    // Details panel
+    selectPersonHint: 'Click a person in the tree to see their details',
+    relatives: 'Relatives',
+    parents: 'Parents',
+    spouses: 'Spouses',
+    children: 'Children',
+    siblings: 'Siblings',
+    noRelatives: 'No relatives recorded',
+    deletePersonTitle: 'Delete person',
+    deletePersonConfirm: 'Delete "{name}"? This cannot be undone.',
+    personDeleted: 'Person deleted',
+    failedToDelete: 'Failed to delete',
+
+    // Panel sections
+    actions: 'Actions',
+    clearSearch: 'Clear',
+    emptyTitle: 'The tree is empty',
+    emptyDescription: 'Add the first family member, or load the sample data to look around.',
+    nameRequired: 'Name is required',
+    avatarUploaded: 'Avatar uploaded',
+    avatarUploadFailed: 'Failed to upload avatar',
 
     // Navigation
     menu: 'Menu',
@@ -173,8 +255,8 @@ export const translations = {
 
     // Generation range
     generationRange: 'Generation Range',
-    ancestors: 'Ancestor generations',
-    descendants: 'Descendant generations',
+    ancestors: 'Generations above',
+    descendants: 'Generations below',
 
     // Person form
     personInfo: 'Person Information',

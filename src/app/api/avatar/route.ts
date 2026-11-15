@@ -13,7 +13,7 @@ the image dimensions. Example: {"x": 20, "y": 10, "width": 60, "height": 60}
 `;
 
 // Default Gemini model
-const DEFAULT_GOOGLE_AI_MODEL = 'gemini-2.5-flash-lite';
+const DEFAULT_GOOGLE_AI_MODEL = 'gemini-3.5-flash-lite';
 
 // POST /api/avatar - Process avatar image
 export async function POST(request: NextRequest) {

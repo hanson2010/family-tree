@@ -4,12 +4,13 @@ import * as React from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useSession } from 'next-auth/react';
 import { useLocale } from '@/components/LocaleProvider';
-import { Search, UserPlus, GitBranch, Database, Zap, RefreshCw } from 'lucide-react';
-import type { Person, Gender } from '@/types';
+import { Search, UserPlus, GitBranch, Users, Shuffle, X } from 'lucide-react';
+import type { Person, Gender, GenerationRange } from '@/types';
 import { FilterControls } from '@/components/FilterControls';
+import { PersonAvatar } from '@/components/PersonAvatar';
+import { cn } from '@/lib/utils';
 
 interface LeftPanelProps {
   searchQuery: string;
@@ -18,17 +19,16 @@ interface LeftPanelProps {
   onAddRelationship: () => void;
   onQuickAddRelationship: () => void;
   onRefresh: () => void;
-  onSeedData: () => void;
   persons: Person[];
   onSelectPerson: (personId: string) => void;
   // Filter props
   filterGenders: Gender[];
   filterLivingInYear: number | null;
+  generationRange: GenerationRange;
   onFilterGendersChange: (genders: Gender[]) => void;
   onFilterLivingInYearChange: (year: number | null) => void;
+  onGenerationRangeChange: (range: GenerationRange) => void;
   onFilterReset: () => void;
-  // Filtered persons count for refresh button state
-  filteredPersonsCount?: number;
 }
 
 export function LeftPanel({
@@ -38,17 +38,17 @@ export function LeftPanel({
   onAddRelationship,
   onQuickAddRelationship,
   onRefresh,
-  onSeedData,
   persons,
   onSelectPerson,
   filterGenders,
   filterLivingInYear,
+  generationRange,
   onFilterGendersChange,
   onFilterLivingInYearChange,
+  onGenerationRangeChange,
   onFilterReset,
-  filteredPersonsCount,
 }: LeftPanelProps) {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const { t } = useLocale();
   const isAuthenticated = status === 'authenticated';
 
@@ -60,10 +60,15 @@ export function LeftPanel({
   // Filter persons based on search query
   const filteredPersons = React.useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase();
+    const query = searchQuery.trim().toLowerCase();
     return persons
-      .filter(p => p.name.toLowerCase().includes(query))
-      .slice(0, 10); // Limit to 10 suggestions
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(query) ||
+          p.courtesyName?.toLowerCase().includes(query) ||
+          p.artName?.toLowerCase().includes(query)
+      )
+      .slice(0, 10);
   }, [persons, searchQuery]);
 
   // Reset highlighted index when suggestions change
@@ -100,18 +105,20 @@ export function LeftPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      return;
+    }
     if (!showSuggestions || filteredPersons.length === 0) return;
 
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setHighlightedIndex(prev =>
-          prev < filteredPersons.length - 1 ? prev + 1 : prev
-        );
+        setHighlightedIndex((prev) => (prev < filteredPersons.length - 1 ? prev + 1 : prev));
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : 0));
         break;
       case 'Enter':
         e.preventDefault();
@@ -119,150 +126,118 @@ export function LeftPanel({
           handleSelectPerson(filteredPersons[highlightedIndex]);
         }
         break;
-      case 'Escape':
-        setShowSuggestions(false);
-        break;
     }
   };
 
-  const handleFocus = () => {
-    if (searchQuery.trim()) {
-      setShowSuggestions(true);
-    }
-  };
+  const sectionTitle = 'text-xs font-semibold uppercase tracking-wider text-muted-foreground';
 
   return (
-    <div className="bg-card border rounded-lg p-4 space-y-4">
+    <div className="flex min-h-full flex-col gap-6 p-4">
       {/* Search */}
-      <div className="space-y-2">
-        <Label htmlFor="search">{t('searchByName')}</Label>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
-          <Input
-            ref={inputRef}
-            id="search"
-            placeholder={t('searchByName')}
-            value={searchQuery}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            onFocus={handleFocus}
-            className="pl-9"
-            autoComplete="off"
-          />
-          {/* Auto-complete suggestions */}
-          {showSuggestions && filteredPersons.length > 0 && (
-            <div
-              ref={suggestionsRef}
-              className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg z-20 max-h-60 overflow-y-auto"
-            >
-              {filteredPersons.map((person, index) => (
-                <div
-                  key={person.id}
-                  className={`px-3 py-2 cursor-pointer flex items-center gap-2 ${
-                    index === highlightedIndex
-                      ? 'bg-accent text-accent-foreground'
-                      : 'hover:bg-accent/50'
-                  }`}
-                  onClick={() => handleSelectPerson(person)}
-                  onMouseEnter={() => setHighlightedIndex(index)}
-                >
-                  <span className="font-medium text-sm">{person.name}</span>
-                  {person.birthYear && (
-                    <span className="text-xs text-muted-foreground">
-                      ({person.birthYear}
-                      {person.deathYear ? ` - ${person.deathYear}` : ''})
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          ref={inputRef}
+          id="search"
+          aria-label={t('searchByName')}
+          placeholder={t('searchByName')}
+          value={searchQuery}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => searchQuery.trim() && setShowSuggestions(true)}
+          className="bg-card pl-9 pr-9"
+          autoComplete="off"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => {
+              onSearchChange('');
+              inputRef.current?.focus();
+            }}
+            className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+            title={t('clearSearch')}
+            aria-label={t('clearSearch')}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+
+        {/* Auto-complete suggestions */}
+        {showSuggestions && filteredPersons.length > 0 && (
+          <div
+            ref={suggestionsRef}
+            className="absolute left-0 right-0 top-full z-20 mt-1.5 max-h-72 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg"
+          >
+            {filteredPersons.map((person, index) => (
+              <button
+                key={person.id}
+                type="button"
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left',
+                  index === highlightedIndex && 'bg-accent'
+                )}
+                onClick={() => handleSelectPerson(person)}
+                onMouseEnter={() => setHighlightedIndex(index)}
+              >
+                <PersonAvatar person={person} className="h-7 w-7 text-xs" />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{person.name}</span>
+                {person.birthYear && (
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {person.birthYear}
+                    {person.deathYear ? `–${person.deathYear}` : ''}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Filter Controls */}
+      <Button
+        variant="outline"
+        className="w-full justify-start bg-card"
+        onClick={onRefresh}
+        disabled={persons.length === 0}
+      >
+        <Shuffle className="mr-2 h-4 w-4" />
+        {t('refresh')}
+      </Button>
+
       <FilterControls
         genders={filterGenders}
         livingInYear={filterLivingInYear}
+        generationRange={generationRange}
         onGendersChange={onFilterGendersChange}
         onLivingInYearChange={onFilterLivingInYearChange}
+        onGenerationRangeChange={onGenerationRangeChange}
         onReset={onFilterReset}
       />
 
-      {/* Divider - only show if there are actions below */}
-      {isAuthenticated && <div className="border-t" />}
-
-      {/* Actions */}
-      <div className="space-y-2">
-        {isAuthenticated && (
-          <>
-            {/* Add Person */}
-            <Button
-              className="w-full justify-start"
-              onClick={onAddPerson}
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              {t('addPerson')}
-            </Button>
-
-            {/* Add Relationship (Advanced) */}
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={onAddRelationship}
-            >
-              <GitBranch className="h-4 w-4 mr-2" />
-              {t('addRelationship')}
-            </Button>
-
-            {/* Quick Add Relationship */}
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={onQuickAddRelationship}
-            >
-              <Zap className="h-4 w-4 mr-2" />
-              {t('quickAddRelationship')}
-            </Button>
-          </>
-        )}
-
-        {/* Refresh - Random Select (available for all users) */}
-        <Button
-          variant="outline"
-          className="w-full justify-start"
-          onClick={onRefresh}
-          disabled={persons.length === 0}
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          {t('refresh')}
-        </Button>
-      </div>
-
-      {/* Seed Data (Development) - Only for authenticated users */}
+      {/* Editing actions */}
       {isAuthenticated && (
-        <>
-          <div className="border-t" />
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-muted-foreground"
-            onClick={onSeedData}
-          >
-            <Database className="h-4 w-4 mr-2" />
-            {t('seedData')}
+        <div className="space-y-2">
+          <h3 className={cn(sectionTitle, 'mb-3')}>{t('actions')}</h3>
+          <Button className="w-full justify-start" onClick={onAddPerson}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            {t('addPerson')}
           </Button>
-        </>
+          <Button variant="outline" className="w-full justify-start bg-card" onClick={onQuickAddRelationship}>
+            <Users className="mr-2 h-4 w-4" />
+            {t('quickAddRelationship')}
+          </Button>
+          <Button variant="outline" className="w-full justify-start bg-card" onClick={onAddRelationship}>
+            <GitBranch className="mr-2 h-4 w-4" />
+            {t('addRelationship')}
+          </Button>
+        </div>
       )}
 
-      {/* Footer */}
-      <div className="pt-2 border-t">
-        <p className="text-xs text-muted-foreground text-center">
-          {t('appName')}
-        </p>
-        <p className="text-xs text-muted-foreground text-center mt-1">
-          v1.0.0
-        </p>
-      </div>
+      {!isAuthenticated && status !== 'loading' && (
+        <p className="text-xs leading-relaxed text-muted-foreground">{t('signInSubtitle')}</p>
+      )}
+
+      <p className="mt-auto pt-2 text-center text-xs text-muted-foreground/70">{t('appName')} · v1.0.0</p>
     </div>
   );
 }

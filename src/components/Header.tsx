@@ -4,12 +4,18 @@ import * as React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { useSession, signOut } from 'next-auth/react';
-import { LogOut, Github, Globe } from 'lucide-react';
+import { useSession, signIn, signOut } from 'next-auth/react';
+import { Languages, LogOut, PanelLeft } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
+import { GoogleIcon } from '@/components/GoogleIcon';
 import { Locale } from '@/lib/i18n';
 
-export function Header() {
+interface HeaderProps {
+  /** Opens the search and actions panel on small screens */
+  onOpenMenu?: () => void;
+}
+
+export function Header({ onOpenMenu }: HeaderProps) {
   const { data: session, status } = useSession();
   const { locale, setLocale, t } = useLocale();
 
@@ -19,84 +25,79 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-14 items-center px-4">
-        {/* Logo */}
-        <Link href="/" className="flex items-center space-x-2 mr-4">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-6 w-6 text-primary"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+    <header className="z-30 w-full shrink-0 border-b bg-card">
+      <div className="flex h-14 items-center gap-1 px-3 sm:px-4">
+        {onOpenMenu && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 lg:hidden"
+            onClick={onOpenMenu}
+            title={t('openMenu')}
+            aria-label={t('openMenu')}
           >
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg>
-          <span className="font-bold text-lg hidden sm:inline-block">
-            {t('appName')}
+            <PanelLeft className="h-5 w-5" />
+          </Button>
+        )}
+
+        {/* Logo */}
+        <Link href="/" className="mr-2 flex items-center gap-2.5">
+          <span className="font-display flex h-8 w-8 items-center justify-center rounded-md bg-brand text-lg font-semibold leading-none text-brand-foreground">
+            族
           </span>
+          <span className="font-display text-lg font-semibold tracking-wide">{t('appName')}</span>
         </Link>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
         {/* Language toggle */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleLocale}
-          className="mr-2"
-        >
-          <Globe className="h-4 w-4 mr-1" />
-          {t('toggleLanguage')}
+        <Button variant="ghost" size="sm" onClick={toggleLocale} className="text-muted-foreground">
+          <Languages className="h-4 w-4 sm:mr-1.5" />
+          <span className="hidden sm:inline">{t('toggleLanguage')}</span>
         </Button>
 
-        {/* Auth buttons */}
-        <div className="flex items-center gap-2">
-          {status === 'loading' ? (
-            <div className="h-8 w-24 bg-muted animate-pulse rounded" />
-          ) : session ? (
-            <>
-              <div className="hidden sm:flex items-center gap-2 mr-2">
-                {session.user?.image && (
-                  <Image
-                    src={session.user.image}
-                    alt={session.user.name || 'User'}
-                    width={32}
-                    height={32}
-                    unoptimized
-                    className="h-8 w-8 rounded-full"
-                  />
-                )}
-                <span className="text-sm font-medium">
-                  {session.user?.name}
+        {/* Account */}
+        {status === 'loading' ? (
+          <div className="h-8 w-24 animate-pulse rounded-md bg-muted" />
+        ) : session ? (
+          <div className="flex items-center gap-1">
+            <div className="ml-1 flex items-center gap-2">
+              {session.user?.image ? (
+                <Image
+                  src={session.user.image}
+                  alt={session.user.name || 'User'}
+                  width={32}
+                  height={32}
+                  unoptimized
+                  className="h-8 w-8 rounded-full border"
+                />
+              ) : (
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium">
+                  {(session.user?.name || '?').slice(0, 1)}
                 </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => signOut({ callbackUrl: '/' })}
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">{t('signOut')}</span>
-              </Button>
-            </>
-          ) : (
+              )}
+              <span className="hidden max-w-[10rem] truncate text-sm font-medium md:inline">
+                {session.user?.name}
+              </span>
+            </div>
             <Button
-              variant="default"
-              size="sm"
-              onClick={() => {
-                window.location.href = '/api/auth/signin/github';
-              }}
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 text-muted-foreground"
+              onClick={() => signOut({ callbackUrl: '/' })}
+              title={t('signOut')}
+              aria-label={t('signOut')}
             >
-              <Github className="h-4 w-4 mr-2" />
-              {t('signInWithGitHub')}
+              <LogOut className="h-4 w-4" />
             </Button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <Button variant="outline" size="sm" className="bg-card" onClick={() => signIn('google')}>
+            <GoogleIcon className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">{t('signInWithGoogle')}</span>
+            <span className="sm:hidden">{t('signIn')}</span>
+          </Button>
+        )}
       </div>
     </header>
   );

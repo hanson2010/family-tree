@@ -113,18 +113,15 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
 
       if (result.success) {
         setFormData(prev => ({ ...prev, avatar: result.avatar }));
-        toast({
-          title: t('avatar'),
-          description: 'Avatar uploaded successfully',
-        });
+        toast({ title: t('avatarUploaded') });
       } else {
-        throw new Error('Failed to upload avatar');
+        throw new Error(t('avatarUploadFailed'));
       }
     } catch (error) {
       toast({
         variant: 'destructive',
         title: t('error'),
-        description: error instanceof Error ? error.message : 'Failed to upload avatar',
+        description: error instanceof Error ? error.message : t('avatarUploadFailed'),
       });
     } finally {
       setIsUploading(false);
@@ -152,7 +149,7 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
       toast({
         variant: 'destructive',
         title: t('error'),
-        description: t('name') + ' is required',
+        description: t('nameRequired'),
       });
       return;
     }
@@ -163,7 +160,7 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
       await onSubmit(formData);
       toast({
         title: mode === 'create' ? t('personCreated') : t('personUpdated'),
-        description: `${formData.name} has been ${mode === 'create' ? 'added to' : 'updated in'} the family tree.`,
+        description: formData.name,
       });
       onClose();
     } catch (error) {

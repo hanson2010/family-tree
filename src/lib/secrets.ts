@@ -1,45 +1,36 @@
-interface AppSecrets {
-  auth_secret: string;
-  github_client_id: string;
-  github_client_secret: string;
-  google_ai_api_key: string;
-}
+// Secrets come from the APP_SECRETS JSON object when it is set, otherwise from
+// environment variables. Both use the same names.
+type SecretName = 'AUTH_SECRET' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'GOOGLE_AI_API_KEY';
 
-let _secrets: AppSecrets | null = null;
+let _appSecrets: Partial<Record<SecretName, string>> | null | undefined;
 
-function getSecrets(): AppSecrets {
-  if (_secrets) return _secrets;
-
-  const raw = process.env.APP_SECRETS;
-  if (raw) {
-    try {
-      _secrets = JSON.parse(raw) as AppSecrets;
-      return _secrets;
-    } catch {
-      console.error('Failed to parse APP_SECRETS JSON');
+function getSecret(name: SecretName): string {
+  if (_appSecrets === undefined) {
+    _appSecrets = null;
+    const raw = process.env.APP_SECRETS;
+    if (raw) {
+      try {
+        _appSecrets = JSON.parse(raw);
+      } catch {
+        console.error('Failed to parse APP_SECRETS JSON');
+      }
     }
   }
 
-  _secrets = {
-    auth_secret: process.env.AUTH_SECRET || '',
-    github_client_id: process.env.GITHUB_CLIENT_ID || '',
-    github_client_secret: process.env.GITHUB_CLIENT_SECRET || '',
-    google_ai_api_key: process.env.GOOGLE_AI_API_KEY || '',
-  };
-  return _secrets;
+  return (_appSecrets ? _appSecrets[name] : process.env[name]) || '';
 }
 
 export const secrets = {
   get authSecret() {
-    return getSecrets().auth_secret;
+    return getSecret('AUTH_SECRET');
   },
-  get githubClientId() {
-    return getSecrets().github_client_id;
+  get googleClientId() {
+    return getSecret('GOOGLE_CLIENT_ID');
   },
-  get githubClientSecret() {
-    return getSecrets().github_client_secret;
+  get googleClientSecret() {
+    return getSecret('GOOGLE_CLIENT_SECRET');
   },
   get googleAiApiKey() {
-    return getSecrets().google_ai_api_key;
+    return getSecret('GOOGLE_AI_API_KEY');
   },
 };
