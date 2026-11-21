@@ -4,14 +4,17 @@ import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { Maximize2, Minus, Plus } from 'lucide-react';
-import type { Person, Relationship, GraphNode, GraphLink } from '@/types';
+import type { Person, Relationship, GraphNode } from '@/types';
 import { Gender as GenderEnum, RelationshipType } from '@/types';
 import { getChineseRelationshipLabel } from '@/lib/chinese-kinship';
+import { DEFAULT_LAYOUT_OPTIONS, PARENTAL_TYPES, layoutFamilyTree } from '@/lib/tree-layout';
 import { useLocale } from '@/components/LocaleProvider';
 
 interface FamilyTreeCanvasProps {
   /** Persons to draw, with relativeGeneration set */
   persons: Person[];
+  /** Persons drawn only to keep a filtered tree connected; shown faded */
+  connectorIds?: Set<string>;
   /** Persons used to work out kinship terms; defaults to `persons` */
   allPersons?: Person[];
   relationships: Relationship[];
@@ -57,25 +60,33 @@ const BRAND = '#B5402A';
 const UNKNOWN_KINSHIP = '未知关系';
 
 const NODE_RADIUS = 26;
-const GENERATION_HEIGHT = 130;
-const MIN_READABLE_SCALE = 0.75;
+/** Smallest text in the tree (kinship terms), in tree units */
+const SMALLEST_FONT = 11;
+/** The view never zooms out so far that text drops below this size on screen */
+const MIN_SCREEN_FONT_PX = 9;
+const MIN_FIT_SCALE = MIN_SCREEN_FONT_PX / SMALLEST_FONT;
+const MAX_FIT_SCALE = 1.25;
+/** Room around the persons for their labels and the arches above a row */
+const TREE_PAD_X = 60;
+const TREE_PAD_TOP = NODE_RADIUS + 24;
+const TREE_PAD_BOTTOM = NODE_RADIUS + 48;
+/** Space kept clear between the tree and the canvas edge */
+const VIEW_MARGIN = 16;
 const MOVE_DURATION = 600;
+/** Persons shown only to connect a filtered tree */
+const CONNECTOR_OPACITY = 0.5;
+const CONNECTOR_RING = '#6B645B';
 
 // Generation range to display: ancestors (negative) to descendants (positive)
 const GENERATION_MIN = -3;
 const GENERATION_MAX = 3;
 
-const PARTNER_TYPES: RelationshipType[] = [
-  RelationshipType.SPOUSE,
-  RelationshipType.CONCUBINE,
-  RelationshipType.BETROTHED,
-];
-
-const PARENTAL_TYPES: RelationshipType[] = [
-  RelationshipType.PARENT_CHILD,
-  RelationshipType.ADOPTIVE_PARENT,
-  RelationshipType.FOSTER_PARENT,
-];
+/** A line between two persons, redrawn from their current positions */
+interface TreeLink {
+  id: string;
+  type: RelationshipType;
+  path: () => string;
+}
 
 function linkStyle(type: RelationshipType): { stroke: string; width: number; dash: string | null } {
   switch (type) {
@@ -152,8 +163,35 @@ function findConnectedPersons(centerId: string, persons: Person[], relationships
   return connected;
 }
 
+/**
+ * One line per relationship, from person to person: an S-curve from parent to child, a straight
+ * line otherwise. Two persons in the same row with someone between them get an arch over them.
+ */
+function treeLinks(relationships: Relationship[], at: (id: string) => { x: number; y: number }): TreeLink[] {
+  const { nodeSpacing } = DEFAULT_LAYOUT_OPTIONS;
+  return relationships.map((rel) => ({
+    id: rel.id,
+    type: rel.type,
+    path: () => {
+      const a = at(rel.personAId);
+      const b = at(rel.personBId);
+      if (PARENTAL_TYPES.includes(rel.type)) {
+        const midY = (a.y + b.y) / 2;
+        return `M${a.x},${a.y}C${a.x},${midY} ${b.x},${midY} ${b.x},${b.y}`;
+      }
+      const [left, right] = a.x <= b.x ? [a, b] : [b, a];
+      if (Math.abs(a.y - b.y) < 1 && right.x - left.x >= 2 * nodeSpacing - 1) {
+        const rise = 12 + Math.min(10, (right.x - left.x) * 0.03);
+        return `M${left.x},${left.y - NODE_RADIUS}Q${(left.x + right.x) / 2},${left.y - NODE_RADIUS - 2 * rise} ${right.x},${right.y - NODE_RADIUS}`;
+      }
+      return `M${a.x},${a.y}L${b.x},${b.y}`;
+    },
+  }));
+}
+
 export function FamilyTreeCanvas({
   persons,
+  connectorIds,
   allPersons,
   relationships,
   selectedPersonId,
@@ -167,7 +205,8 @@ export function FamilyTreeCanvas({
   const nodesRef = useRef<TreeNode[]>([]);
   // Node positions survive redraws, so the tree moves instead of being reshuffled
   const positionsRef = useRef(new Map<string, { x: number; y: number }>());
-  const lastCenterRef = useRef<string | null>(null);
+  // The center person and the persons drawn when the view was last aimed
+  const lastViewRef = useRef<string | null>(null);
 
   const [isEmpty, setIsEmpty] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -176,10 +215,16 @@ export function FamilyTreeCanvas({
   const selfLabel = t('self');
 
   /**
-   * Move the view to show the tree. With `focusId`, a tree too large to stay readable
-   * when shown whole is instead centered on that person at a readable size.
+   * Show the whole tree, zoomed out no further than the minimum text size, with the person
+   * `focusId` (at their position in `positions`) as close to the middle as possible. The view
+   * stops where the tree's edge meets the canvas edge: a tree that fits stays fully in view,
+   * and a larger one never shows empty space beyond its edge.
    */
-  const showTree = useCallback((duration: number, focusId?: string | null) => {
+  const centerOn = useCallback((
+    focusId: string | null,
+    duration: number,
+    positions?: Map<string, { x: number; y: number }>
+  ) => {
     const svgEl = svgRef.current;
     const zoom = zoomRef.current;
     const nodes = nodesRef.current;
@@ -188,22 +233,26 @@ export function FamilyTreeCanvas({
     const { width, height } = svgEl.getBoundingClientRect();
     if (!width || !height) return;
 
-    const xs = nodes.map((n) => n.x ?? 0);
-    const ys = nodes.map((n) => n.y ?? 0);
-    const minX = Math.min(...xs) - 70;
-    const maxX = Math.max(...xs) + 70;
-    const minY = Math.min(...ys) - 50;
-    const maxY = Math.max(...ys) + 75;
-    let k = Math.max(0.2, Math.min(1.25, width / (maxX - minX), height / (maxY - minY)));
-    let cx = (minX + maxX) / 2;
-    let cy = (minY + maxY) / 2;
+    const points = nodes.map((n) => positions?.get(n.id) ?? { x: n.x ?? 0, y: n.y ?? 0 });
+    const minX = Math.min(...points.map((p) => p.x)) - TREE_PAD_X;
+    const maxX = Math.max(...points.map((p) => p.x)) + TREE_PAD_X;
+    const minY = Math.min(...points.map((p) => p.y)) - TREE_PAD_TOP;
+    const maxY = Math.max(...points.map((p) => p.y)) + TREE_PAD_BOTTOM;
+    const viewWidth = Math.max(1, width - 2 * VIEW_MARGIN);
+    const viewHeight = Math.max(1, height - 2 * VIEW_MARGIN);
 
-    const focus = focusId ? nodes.find((n) => n.id === focusId) : undefined;
-    if (focus && k < MIN_READABLE_SCALE) {
-      k = MIN_READABLE_SCALE;
-      cx = focus.x ?? 0;
-      cy = focus.y ?? 0;
-    }
+    const fitScale = Math.min(viewWidth / (maxX - minX), viewHeight / (maxY - minY));
+    const k = Math.max(MIN_FIT_SCALE, Math.min(MAX_FIT_SCALE, fitScale));
+
+    // The view's center may move between the two positions that put a tree edge on a view edge
+    const clampCenter = (value: number, low: number, high: number, viewSize: number) => {
+      const a = low + viewSize / (2 * k);
+      const b = high - viewSize / (2 * k);
+      return Math.min(Math.max(value, Math.min(a, b)), Math.max(a, b));
+    };
+    const focusIndex = Math.max(0, nodes.findIndex((n) => n.id === focusId));
+    const cx = clampCenter(points[focusIndex].x, minX, maxX, viewWidth);
+    const cy = clampCenter(points[focusIndex].y, minY, maxY, viewHeight);
 
     const transform = d3.zoomIdentity.translate(width / 2 - k * cx, height / 2 - k * cy).scale(k);
     const svg = d3.select(svgEl);
@@ -231,20 +280,28 @@ export function FamilyTreeCanvas({
 
     // The layout is centered on (0, 0); the zoom transform places it in the viewport.
     const centerId = selectedPersonId || (persons.length > 0 ? persons[0].id : null);
-    const connectedIds = centerId ? findConnectedPersons(centerId, persons, relationships) : new Set<string>();
+    // The tree is everyone connected through any person, so a filter that hides someone does not
+    // cut off the persons related through them; `persons` then decides who is drawn
+    const connectedIds = centerId ? findConnectedPersons(centerId, kinshipPersons, relationships) : new Set<string>();
     const visiblePersons = persons.filter((person) => {
       if (!connectedIds.has(person.id)) return false;
       const gen = person.relativeGeneration ?? 0;
       return gen >= GENERATION_MIN && gen <= GENERATION_MAX;
     });
     const visibleIds = new Set(visiblePersons.map((p) => p.id));
+    const viewKey = `${centerId}|${[...visibleIds].sort().join(',')}`;
 
     const saved = positionsRef.current;
     const isFreshLayout = visiblePersons.every((p) => !saved.has(p.id));
 
+    const visibleRelationships = relationships.filter(
+      (rel) => visibleIds.has(rel.personAId) && visibleIds.has(rel.personBId)
+    );
+    const layout = layoutFamilyTree(visiblePersons, visibleRelationships);
+    const settled = layout.positions;
+
     const nodes: TreeNode[] = visiblePersons.map((person) => {
-      const gen = person.relativeGeneration ?? 0;
-      const position = saved.get(person.id);
+      const position = settled.get(person.id)!;
       let kinship: string | undefined;
       if (person.id === selectedPersonId) {
         kinship = selfLabel;
@@ -256,47 +313,23 @@ export function FamilyTreeCanvas({
           // No kinship term for this pair
         }
       }
-      return {
-        ...person,
-        kinship,
-        x: position?.x ?? (Math.random() - 0.5) * 300,
-        y: position?.y ?? gen * GENERATION_HEIGHT + (Math.random() - 0.5) * 40,
-      };
+      return { ...person, kinship, x: position.x, y: position.y };
     });
     const previous = new Map(Array.from(saved).filter(([id]) => visibleIds.has(id)));
-
-    const links: GraphLink[] = relationships
-      .filter((rel) => visibleIds.has(rel.personAId) && visibleIds.has(rel.personBId))
-      .map((rel) => ({ ...rel, source: rel.personAId, target: rel.personBId }));
 
     nodesRef.current = nodes;
     setIsEmpty(nodes.length === 0);
     if (nodes.length === 0) return;
 
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const at = (id: string) => {
+      const n = nodeById.get(id)!;
+      return { x: n.x ?? 0, y: n.y ?? 0 };
+    };
+    const links = treeLinks(visibleRelationships, at);
+
     const g = svg.append('g');
     const defs = svg.append('defs');
-
-    const simulation = d3
-      .forceSimulation<TreeNode>(nodes)
-      .force(
-        'link',
-        d3
-          .forceLink<TreeNode, GraphLink>(links)
-          .id((d) => d.id)
-          .distance((d) => (PARTNER_TYPES.includes(d.type) ? 90 : 150))
-          .strength((d) => (PARTNER_TYPES.includes(d.type) ? 0.8 : 0.3))
-      )
-      .force('charge', d3.forceManyBody<TreeNode>().strength(-650).distanceMax(700))
-      .force('collision', d3.forceCollide<TreeNode>().radius(NODE_RADIUS + 26))
-      // Ancestors above, descendants below
-      .force('generation', d3.forceY<TreeNode>((d) => (d.relativeGeneration ?? 0) * GENERATION_HEIGHT).strength(0.9))
-      // The selected person settles in the middle; everyone else is held loosely around them
-      .force('x', d3.forceX<TreeNode>(0).strength((d) => (d.id === selectedPersonId ? 0.4 : 0.03)))
-      .stop();
-
-    // Work out the final layout up front, so the view can be aimed at it
-    simulation.tick(300);
-    const settled = new Map(nodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]));
     let glide: d3.Timer | null = null;
 
     // Links
@@ -304,6 +337,7 @@ export function FamilyTreeCanvas({
       .append('g')
       .attr('fill', 'none')
       .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round')
       .selectAll('path')
       .data(links)
       .enter()
@@ -321,25 +355,9 @@ export function FamilyTreeCanvas({
       .enter()
       .append('g')
       .attr('class', (d) => (d.id === selectedPersonId ? 'tree-node is-selected' : 'tree-node'))
-      .call(
-        d3
-          .drag<SVGGElement, TreeNode>()
-          .on('start', (event, d) => {
-            glide?.stop();
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on('drag', (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on('end', (event, d) => {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          })
-      );
+      // Connectors do not match the filters: faded and in grey
+      .attr('opacity', (d) => (connectorIds?.has(d.id) ? CONNECTOR_OPACITY : null))
+      .style('filter', (d) => (connectorIds?.has(d.id) ? 'grayscale(1)' : null));
 
     // Halo behind the selected person
     node
@@ -365,6 +383,16 @@ export function FamilyTreeCanvas({
       .attr('stroke', '#FFFFFF')
       .attr('stroke-width', 2.5)
       .style('filter', 'drop-shadow(0 1px 2px rgba(43, 38, 34, 0.25))');
+
+    // Dashed ring marking a connector
+    node
+      .filter((d) => !!connectorIds?.has(d.id))
+      .append('circle')
+      .attr('r', NODE_RADIUS + 4)
+      .attr('fill', 'none')
+      .attr('stroke', CONNECTOR_RING)
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '4,3');
 
     node.each(function (d) {
       const nodeGroup = d3.select(this);
@@ -410,7 +438,7 @@ export function FamilyTreeCanvas({
           .attr('class', 'node-label')
           .attr('y', NODE_RADIUS + 32)
           .attr('text-anchor', 'middle')
-          .attr('font-size', '11px')
+          .attr('font-size', `${SMALLEST_FONT}px`)
           .attr('fill', BRAND)
           .text(truncate(d.kinship, 10));
       }
@@ -459,24 +487,10 @@ export function FamilyTreeCanvas({
       .on('mouseleave', () => setTooltip(null));
 
     const render = () => {
-      link.attr('d', (d) => {
-        const source = d.source as TreeNode;
-        const target = d.target as TreeNode;
-        const sx = source.x ?? 0;
-        const sy = source.y ?? 0;
-        const tx = target.x ?? 0;
-        const ty = target.y ?? 0;
-        if (PARENTAL_TYPES.includes(d.type)) {
-          const midY = (sy + ty) / 2;
-          return `M${sx},${sy}C${sx},${midY} ${tx},${midY} ${tx},${ty}`;
-        }
-        return `M${sx},${sy}L${tx},${ty}`;
-      });
+      link.attr('d', (d) => d.path());
       node.attr('transform', (d) => `translate(${d.x ?? 0}, ${d.y ?? 0})`);
       nodes.forEach((n) => saved.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 }));
     };
-
-    simulation.on('tick', render);
 
     // Zoom and pan
     const zoom = d3
@@ -491,10 +505,11 @@ export function FamilyTreeCanvas({
 
     if (isFreshLayout) {
       render();
-      showTree(0, centerId);
+      centerOn(centerId, 0);
     } else {
-      // Aim the view at the settled layout, then glide everyone there from where they were
-      if (lastCenterRef.current !== centerId) showTree(MOVE_DURATION, centerId);
+      // When the center person or the persons drawn change (e.g. a filter), aim the view at the
+      // new layout, then glide everyone there
+      if (lastViewRef.current !== viewKey) centerOn(centerId, MOVE_DURATION, settled);
       const place = (progress: number) => {
         nodes.forEach((n) => {
           const to = settled.get(n.id)!;
@@ -511,14 +526,13 @@ export function FamilyTreeCanvas({
         if (progress >= 1) glide?.stop();
       });
     }
-    lastCenterRef.current = centerId;
+    lastViewRef.current = viewKey;
 
     return () => {
       glide?.stop();
-      simulation.stop();
       svg.interrupt();
     };
-  }, [persons, kinshipPersons, relationships, selectedPersonId, onSelectPerson, onEditPerson, selfLabel, showTree]);
+  }, [persons, connectorIds, kinshipPersons, relationships, selectedPersonId, onSelectPerson, onEditPerson, selfLabel, centerOn]);
 
   return (
     <div ref={containerRef} className="tree-canvas relative h-full w-full overflow-hidden">
@@ -566,6 +580,15 @@ export function FamilyTreeCanvas({
               </div>
             );
           })}
+          {connectorIds && connectorIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <svg width="12" height="12" aria-hidden="true">
+                <circle cx="6" cy="6" r="4" fill="#A8A29E" opacity={CONNECTOR_OPACITY} />
+                <circle cx="6" cy="6" r="5.25" fill="none" stroke={CONNECTOR_RING} strokeWidth="1" strokeDasharray="2,1.5" />
+              </svg>
+              <span>{t('connectorLegend')}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -574,7 +597,7 @@ export function FamilyTreeCanvas({
         {[
           { label: t('zoomIn'), icon: Plus, onClick: () => zoomBy(1.3) },
           { label: t('zoomOut'), icon: Minus, onClick: () => zoomBy(1 / 1.3) },
-          { label: t('fitView'), icon: Maximize2, onClick: () => showTree(400) },
+          { label: t('fitView'), icon: Maximize2, onClick: () => centerOn(selectedPersonId, 400) },
         ].map(({ label, icon: Icon, onClick }) => (
           <button
             key={label}

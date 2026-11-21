@@ -1,8 +1,10 @@
 import { ImageResponse } from 'next/og';
+import { BRAND_GLYPH_PATH } from '@/components/BrandMark';
 
-export const size = 32;
+export const size = { width: 32, height: 32 };
 export const contentType = 'image/png';
 
+// The same outline as the page logo, so the tab icon is centred without depending on a font
 export default function Icon() {
   return new ImageResponse(
     (
@@ -11,22 +13,15 @@ export default function Icon() {
           width: '100%',
           height: '100%',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           backgroundColor: '#b5402a',
           borderRadius: '6px',
         }}
       >
-        <span
-          style={{
-            fontSize: 20,
-            color: '#f8fafc',
-          }}
-        >
-          族
-        </span>
+        <svg width="32" height="32" viewBox="0 0 100 100" fill="#f8fafc">
+          <path d={BRAND_GLYPH_PATH} />
+        </svg>
       </div>
     ),
-    { width: 32, height: 32 }
+    size
   );
 }

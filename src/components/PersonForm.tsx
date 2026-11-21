@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
-import type { Person, PersonFormData, Gender, AvatarUploadResponse } from '@/types';
+import type { ApiResponse, Person, PersonFormData, Gender, AvatarUploadResponse, SavedAvatar } from '@/types';
 import { Gender as GenderEnum } from '@/types';
 import { Upload, X, User, Loader2 } from 'lucide-react';
 
@@ -41,6 +41,38 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  // Faces found in an uploaded group photo, waiting for the user to pick one
+  const [faceChoices, setFaceChoices] = useState<string[]>([]);
+  // Faces saved earlier from group photos; the chosen one is removed once the person is saved
+  const [savedAvatars, setSavedAvatars] = useState<SavedAvatar[]>([]);
+  const [chosenSavedId, setChosenSavedId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setChosenSavedId(null);
+    let cancelled = false;
+    fetch('/api/avatars')
+      .then((r) => r.json())
+      .then((result: ApiResponse<SavedAvatar[]>) => {
+        if (!cancelled && result.success) setSavedAvatars(result.data ?? []);
+      })
+      .catch(() => {
+        // Saved faces are optional; the form works without them
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  const deleteSavedAvatar = async (id: string) => {
+    const response = await fetch(`/api/avatars/${id}`, { method: 'DELETE' });
+    if (response.ok) {
+      setSavedAvatars((list) => list.filter((a) => a.id !== id));
+      if (chosenSavedId === id) setChosenSavedId(null);
+    } else {
+      toast({ variant: 'destructive', title: t('error'), description: t('failedToDelete') });
+    }
+  };
   const [formData, setFormData] = useState<PersonFormData>({
     name: person?.name || '',
     courtesyName: person?.courtesyName || '',
@@ -58,6 +90,7 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
 
   // Reset form when person changes
   React.useEffect(() => {
+    setFaceChoices([]);
     if (person) {
       setFormData({
         name: person.name || '',
@@ -111,8 +144,11 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
 
       const result: AvatarUploadResponse = await response.json();
 
-      if (result.success) {
-        setFormData(prev => ({ ...prev, avatar: result.avatar }));
+      if (result.success && result.avatars.length > 1) {
+        setFaceChoices(result.avatars);
+      } else if (result.success && result.avatars.length === 1) {
+        setFaceChoices([]);
+        setFormData(prev => ({ ...prev, avatar: result.avatars[0] }));
         toast({ title: t('avatarUploaded') });
       } else {
         throw new Error(t('avatarUploadFailed'));
@@ -157,7 +193,11 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
     setIsSubmitting(true);
 
     try {
-      await onSubmit(formData);
+      // A saved face still shown as the avatar is sent by id; the server saves the person and
+      // removes the face from the saved list in one step
+      const used = savedAvatars.find((a) => a.id === chosenSavedId && a.image === formData.avatar);
+      await onSubmit(used ? { ...formData, savedAvatarId: used.id } : formData);
+      if (used) setSavedAvatars((list) => list.filter((a) => a.id !== used.id));
       toast({
         title: mode === 'create' ? t('personCreated') : t('personUpdated'),
         description: formData.name,
@@ -240,6 +280,66 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
               </Button>
             </div>
           </div>
+
+          {savedAvatars.length > 0 && faceChoices.length === 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                {t('savedFaces')} ({savedAvatars.length})
+              </p>
+              {/* Newest first; about three rows show, the rest scroll vertically */}
+              <div className="flex max-h-[11.5rem] flex-wrap gap-2.5 overflow-y-auto p-1">
+                {savedAvatars.map((saved) => (
+                  <div key={saved.id} className="relative shrink-0">
+                    <button
+                      type="button"
+                      aria-label={t('useSavedFace')}
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, avatar: saved.image }));
+                        setChosenSavedId(saved.id);
+                      }}
+                      className={`h-12 w-12 overflow-hidden rounded-full border-2 transition hover:border-primary focus-visible:border-primary focus-visible:outline-none ${
+                        chosenSavedId === saved.id ? 'border-primary' : 'border-transparent'
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={saved.image} alt="" className="h-full w-full object-cover" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t('deleteSavedFace')}
+                      onClick={() => deleteSavedAvatar(saved.id)}
+                      className="absolute -right-1 -top-1 rounded-full bg-background p-0.5 text-muted-foreground shadow hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {faceChoices.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">{t('chooseFace')}</p>
+              <div className="flex flex-wrap gap-2">
+                {faceChoices.map((face, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    aria-label={`${t('chooseFace')} ${index + 1}`}
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, avatar: face }));
+                      setFaceChoices([]);
+                    }}
+                    className="h-14 w-14 overflow-hidden rounded-full border-2 border-transparent transition hover:border-primary focus-visible:border-primary focus-visible:outline-none"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={face} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Name */}
           <div className="space-y-2">

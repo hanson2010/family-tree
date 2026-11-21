@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { BrandMark } from '@/components/BrandMark';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useSession, signIn, signOut } from 'next-auth/react';
@@ -42,9 +43,7 @@ export function Header({ onOpenMenu }: HeaderProps) {
 
         {/* Logo */}
         <Link href="/" className="mr-2 flex items-center gap-2.5">
-          <span className="font-display flex h-8 w-8 items-center justify-center rounded-md bg-brand text-lg font-semibold leading-none text-brand-foreground">
-            族
-          </span>
+          <BrandMark className="h-8 w-8 rounded-md" />
           <span className="font-display text-lg font-semibold tracking-wide">{t('appName')}</span>
         </Link>
 
@@ -69,6 +68,8 @@ export function Header({ onOpenMenu }: HeaderProps) {
                   width={32}
                   height={32}
                   unoptimized
+                  // Google's image server answers 429 to requests with a localhost Referer
+                  referrerPolicy="no-referrer"
                   className="h-8 w-8 rounded-full border"
                 />
               ) : (

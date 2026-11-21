@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, getEntity, saveEntity, deleteEntity } from '@/lib/firestore';
+import { KINDS, getEntity, deleteEntity } from '@/lib/firestore';
+import { findOwnSavedAvatar, personRequestSchema, savePerson } from '@/lib/person-save';
 import type { Person, ApiResponse } from '@/types';
-import { personSchema } from '@/types';
 
 // GET /api/persons/[id] - Get a single person
 export async function GET(
@@ -78,7 +78,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const validationResult = personSchema.safeParse(body);
+    const validationResult = personRequestSchema.safeParse(body);
 
     if (!validationResult.success) {
       return NextResponse.json<ApiResponse<never>>(
@@ -88,6 +88,15 @@ export async function PUT(
     }
 
     const data = validationResult.data;
+    // A saved face is used as stored, not as sent by the browser
+    const savedAvatar = data.savedAvatarId ? await findOwnSavedAvatar(data.savedAvatarId, session.user.id) : null;
+    if (data.savedAvatarId && !savedAvatar) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: 'The saved face is no longer available.' },
+        { status: 409 }
+      );
+    }
+
     const updatedPerson: Person = {
       ...existingPerson,
       name: data.name,
@@ -100,12 +109,12 @@ export async function PUT(
       deathYear: data.deathYear ?? null,
       deathMonth: data.deathMonth ?? null,
       deathDay: data.deathDay ?? null,
-      avatar: data.avatar ?? null,
+      avatar: savedAvatar?.image ?? data.avatar ?? null,
       isPrivate: data.isPrivate,
       updatedAt: new Date(),
     };
 
-    await saveEntity(KINDS.PERSON, updatedPerson);
+    await savePerson(updatedPerson, savedAvatar?.id);
 
     return NextResponse.json<ApiResponse<Person>>({
       success: true,

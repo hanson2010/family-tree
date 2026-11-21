@@ -99,6 +99,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // The same relationship between the same two persons is stored once: return the existing one.
+    // "Add Family Relationships" sends the parents' marriage again with every child.
+    const between = async (a: string, b: string) =>
+      queryEntities<Relationship>(KINDS.RELATIONSHIP, [
+        { property: 'personAId', operator: '==', value: a },
+        { property: 'personBId', operator: '==', value: b },
+      ]);
+    const existing = [...(await between(personAId, personBId)), ...(await between(personBId, personAId))].find(
+      (r) => r.type === data.type
+    );
+    if (existing) {
+      return NextResponse.json<ApiResponse<Relationship>>({ success: true, data: existing }, { status: 200 });
+    }
+
     const relationship: Relationship = {
       id: uuidv4(),
       personAId,

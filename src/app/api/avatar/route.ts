@@ -1,116 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { secrets } from '@/lib/secrets';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { avatarsFromPhoto } from '@/lib/faces';
 import type { ApiResponse, AvatarUploadResponse } from '@/types';
 
-// Gemini VLM prompt for smart cropping
-const GEMINI_CROP_PROMPT = `
-You are an image analysis assistant. Analyze the provided image and return
-the best crop region for a square portrait avatar. Focus on the face/head area.
-Return ONLY a JSON object with x, y, width, height as percentages (0-100) of
-the image dimensions. Example: {"x": 20, "y": 10, "width": 60, "height": 60}
-`;
+const MAX_SIZE = 10 * 1024 * 1024;
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
-// Default Gemini model
-const DEFAULT_GOOGLE_AI_MODEL = 'gemini-3.5-flash-lite';
-
-// POST /api/avatar - Process avatar image
+// POST /api/avatar - Square avatars of every face in an uploaded photo
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-
     if (!session?.user?.id) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json<ApiResponse<never>>({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-
-    if (!file) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
-      );
+    const file = (await request.formData()).get('file');
+    if (!(file instanceof File)) {
+      return NextResponse.json<ApiResponse<never>>({ success: false, error: 'No file provided' }, { status: 400 });
     }
-
-    // Validate file
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
-    if (file.size > maxSize) {
+    if (file.size > MAX_SIZE) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: 'File too large. Maximum size is 10MB.' },
         { status: 400 }
       );
     }
-
-    if (!allowedTypes.includes(file.type)) {
+    if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: 'Invalid file type. Allowed types: JPEG, PNG, GIF, WebP.' },
         { status: 400 }
       );
     }
 
-    // Read image buffer
-    const buffer = await file.arrayBuffer();
-    const base64Original = Buffer.from(buffer).toString('base64');
-
-    // Get smart crop suggestion from Gemini
-    let cropSuggestion = { x: 25, y: 15, width: 50, height: 50 }; // Default crop
-
-    try {
-      const genAI = new GoogleGenerativeAI(secrets.googleAiApiKey);
-      const model = genAI.getGenerativeModel({ model: process.env.GOOGLE_AI_MODEL || DEFAULT_GOOGLE_AI_MODEL });
-
-      const result = await model.generateContent([
-        GEMINI_CROP_PROMPT,
-        {
-          inlineData: {
-            mimeType: file.type,
-            data: base64Original,
-          },
-        },
-      ]);
-
-      const response = result.response.text();
-      // Parse JSON from response
-      const jsonMatch = response.match(/\{[^}]+\}/);
-      if (jsonMatch) {
-        cropSuggestion = JSON.parse(jsonMatch[0]);
-      }
-    } catch (geminiError) {
-      console.warn('Gemini AI crop suggestion failed, using default:', geminiError);
-      // Continue with default crop
-    }
-
-    // Process image (resize to 200x200, convert to JPEG)
-    // In production, use Sharp library for image processing
-    // For now, we'll return the original image as base64
-    // In a real implementation, you would:
-    // 1. Crop to suggested region
-    // 2. Resize to 200x200 pixels
-    // 3. Compress to WebP or optimized JPEG
-    // 4. Convert to base64 data URL
-
-    const mimeType = file.type;
-    const processedBase64 = `data:${mimeType};base64,${base64Original}`;
-
-    return NextResponse.json<AvatarUploadResponse>({
-      success: true,
-      avatar: processedBase64,
-      cropSuggestion,
-      originalSize: file.size,
-      processedSize: base64Original.length,
-    });
+    const { avatars, detected } = await avatarsFromPhoto(Buffer.from(await file.arrayBuffer()));
+    return NextResponse.json<AvatarUploadResponse>({ success: true, avatars, detected });
   } catch (error) {
     console.error('Error processing avatar:', error);
-    return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: 'Failed to process avatar' },
-      { status: 500 }
-    );
+    return NextResponse.json<ApiResponse<never>>({ success: false, error: 'Failed to process avatar' }, { status: 500 });
   }
 }

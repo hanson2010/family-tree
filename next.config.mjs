@@ -18,7 +18,7 @@ const nextConfig = {
   serverExternalPackages: [
     '@google-cloud/datastore',
     '@google-cloud/storage',
-    '@google/generative-ai',
+    '@google/genai',
   ],
 };
 

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSession } from 'next-auth/react';
 import { useLocale } from '@/components/LocaleProvider';
-import { Search, UserPlus, GitBranch, Users, Shuffle, X } from 'lucide-react';
+import { Search, UserPlus, GitBranch, Users, Shuffle, X, ScanText, Images } from 'lucide-react';
 import type { Person, Gender, GenerationRange } from '@/types';
 import { FilterControls } from '@/components/FilterControls';
 import { PersonAvatar } from '@/components/PersonAvatar';
@@ -18,6 +18,8 @@ interface LeftPanelProps {
   onAddPerson: () => void;
   onAddRelationship: () => void;
   onQuickAddRelationship: () => void;
+  onImport: () => void;
+  onGroupPhoto: () => void;
   onRefresh: () => void;
   persons: Person[];
   onSelectPerson: (personId: string) => void;
@@ -37,6 +39,8 @@ export function LeftPanel({
   onAddPerson,
   onAddRelationship,
   onQuickAddRelationship,
+  onImport,
+  onGroupPhoto,
   onRefresh,
   persons,
   onSelectPerson,
@@ -229,6 +233,14 @@ export function LeftPanel({
           <Button variant="outline" className="w-full justify-start bg-card" onClick={onAddRelationship}>
             <GitBranch className="mr-2 h-4 w-4" />
             {t('addRelationship')}
+          </Button>
+          <Button variant="outline" className="w-full justify-start bg-card" onClick={onImport}>
+            <ScanText className="mr-2 h-4 w-4" />
+            {t('importRecords')}
+          </Button>
+          <Button variant="outline" className="w-full justify-start bg-card" onClick={onGroupPhoto}>
+            <Images className="mr-2 h-4 w-4" />
+            {t('groupPhoto')}
           </Button>
         </div>
       )}

@@ -95,7 +95,9 @@ export function PersonDetailsPanel({
       if (sibling) siblings.set(sibling.id, sibling);
     }
 
-    const toMembers = (list: Person[]) => list.map((p) => ({ person: p }));
+    // Each person once per group, even if the same relationship is stored more than once
+    const toMembers = (list: Person[]) =>
+      list.filter((p, i) => list.findIndex((q) => q.id === p.id) === i).map((p) => ({ person: p }));
     return [
       { title: t('parents'), members: toMembers(parents) },
       { title: t('spouses'), members: toMembers(spouses) },

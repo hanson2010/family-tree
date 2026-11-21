@@ -140,6 +140,8 @@ export interface PersonFormData {
 
   avatar?: string | null;
   isPrivate: boolean;
+  /** A saved face used as the avatar; the server saves the person and removes the face together */
+  savedAvatarId?: string;
 }
 
 export interface RelationshipFormData {
@@ -163,17 +165,21 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+/** A face saved for later; only its creator sees it, until it is used for a person */
+export interface SavedAvatar {
+  id: string;
+  /** Square JPEG data URL */
+  image: string;
+  createdBy: string;
+  createdAt: Date;
+}
+
 export interface AvatarUploadResponse {
   success: boolean;
-  avatar: string;  // Base64 data URL
-  cropSuggestion: {
-    x: number;      // 0-100 percentage
-    y: number;      // 0-100 percentage
-    width: number;  // 0-100 percentage
-    height: number; // 0-100 percentage
-  };
-  originalSize: number;
-  processedSize: number;
+  /** Square JPEG data URLs, one per face, left to right */
+  avatars: string[];
+  /** False when no face was found and the single avatar is the middle of the photo */
+  detected: boolean;
 }
 
 // Zod validation schemas

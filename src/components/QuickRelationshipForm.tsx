@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,198 +14,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
-import type { RelationshipFormData, Person, Gender } from '@/types';
+import { PersonAutocomplete } from '@/components/PersonAutocomplete';
+import { familyHints } from '@/lib/candidates';
+import type { RelationshipFormData, Person } from '@/types';
 import { RelationshipType as RelType, Gender as GenderEnum } from '@/types';
 import { Loader2, Users } from 'lucide-react';
 
 interface QuickRelationshipFormProps {
   isOpen: boolean;
   persons: Person[];
+  /** Ids of persons in at least one relationship; the others are suggested first */
+  linkedIds: Set<string>;
   onSubmit: (data: RelationshipFormData) => Promise<void>;
   onClose: () => void;
-}
-
-// Person autocomplete input component
-interface PersonAutocompleteProps {
-  value: string;
-  onChange: (value: string) => void;
-  persons: Person[];
-  excludeIds?: string[];
-  placeholder: string;
-  label: string;
-  genderFilter?: Gender;
-}
-
-function PersonAutocomplete({
-  value,
-  onChange,
-  persons,
-  excludeIds = [],
-  placeholder,
-  label,
-  genderFilter,
-}: PersonAutocompleteProps) {
-  const [inputValue, setInputValue] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-
-  // Get the selected person's name
-  const selectedPerson = React.useMemo(() => {
-    return persons.find(p => p.id === value);
-  }, [persons, value]);
-
-  // Initialize input value with selected person's name
-  useEffect(() => {
-    if (selectedPerson) {
-      setInputValue(selectedPerson.name);
-    } else {
-      setInputValue('');
-    }
-  }, [selectedPerson]);
-
-  // Filter persons based on input
-  const filteredPersons = React.useMemo(() => {
-    let filtered = persons.filter(p => !excludeIds.includes(p.id));
-
-    // Apply gender filter if specified
-    if (genderFilter) {
-      filtered = filtered.filter(p => p.gender === genderFilter);
-    }
-
-    if (!inputValue.trim()) {
-      return filtered.slice(0, 10);
-    }
-    const query = inputValue.toLowerCase();
-    return filtered
-      .filter(p => p.name.toLowerCase().includes(query))
-      .slice(0, 10);
-  }, [persons, excludeIds, inputValue, genderFilter]);
-
-  // Reset highlighted index when suggestions change
-  useEffect(() => {
-    setHighlightedIndex(0);
-  }, [filteredPersons.length]);
-
-  // Handle click outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        suggestionsRef.current &&
-        !suggestionsRef.current.contains(event.target as Node) &&
-        inputRef.current &&
-        !inputRef.current.contains(event.target as Node)
-      ) {
-        setShowSuggestions(false);
-        // Reset input to selected person's name if no valid selection
-        if (selectedPerson) {
-          setInputValue(selectedPerson.name);
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [selectedPerson]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
-    setShowSuggestions(true);
-  };
-
-  const handleSelectPerson = (person: Person) => {
-    setInputValue(person.name);
-    onChange(person.id);
-    setShowSuggestions(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showSuggestions || filteredPersons.length === 0) {
-      if (e.key === 'Escape') {
-        setShowSuggestions(false);
-        if (selectedPerson) {
-          setInputValue(selectedPerson.name);
-        }
-      }
-      return;
-    }
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        setHighlightedIndex(prev =>
-          prev < filteredPersons.length - 1 ? prev + 1 : prev
-        );
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (filteredPersons[highlightedIndex]) {
-          handleSelectPerson(filteredPersons[highlightedIndex]);
-        }
-        break;
-      case 'Escape':
-        setShowSuggestions(false);
-        if (selectedPerson) {
-          setInputValue(selectedPerson.name);
-        }
-        break;
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="relative">
-        <Input
-          ref={inputRef}
-          placeholder={placeholder}
-          value={inputValue}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setShowSuggestions(true)}
-          autoComplete="off"
-        />
-        {showSuggestions && filteredPersons.length > 0 && (
-          <div
-            ref={suggestionsRef}
-            className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg z-50 max-h-60 overflow-y-auto"
-          >
-            {filteredPersons.map((person, index) => (
-              <div
-                key={person.id}
-                className={`px-3 py-2 cursor-pointer flex items-center gap-2 ${
-                  index === highlightedIndex
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-accent/50'
-                }`}
-                onClick={() => handleSelectPerson(person)}
-                onMouseEnter={() => setHighlightedIndex(index)}
-              >
-                <span className="font-medium text-sm">{person.name}</span>
-                <span className="text-xs text-muted-foreground">({person.gender})</span>
-                {person.birthYear && (
-                  <span className="text-xs text-muted-foreground">
-                    ({person.birthYear}
-                    {person.deathYear ? ` - ${person.deathYear}` : ''})
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function QuickRelationshipForm({
   isOpen,
   persons,
+  linkedIds,
   onSubmit,
   onClose,
 }: QuickRelationshipFormProps) {
@@ -217,6 +44,9 @@ export function QuickRelationshipForm({
   const [dadId, setDadId] = useState('');
   const [momId, setMomId] = useState('');
   const [childId, setChildId] = useState('');
+
+  const find = (id: string) => persons.find((p) => p.id === id);
+  const hints = familyHints(find(dadId), find(momId), find(childId));
 
   // Marriage dates
   const [marriageStartYear, setMarriageStartYear] = useState<number | null>(null);
@@ -376,6 +206,8 @@ export function QuickRelationshipForm({
             value={dadId}
             onChange={setDadId}
             persons={persons}
+            linkedIds={linkedIds}
+            hint={hints.father}
             excludeIds={[momId, childId].filter(Boolean)}
             placeholder={t('searchByName')}
             label={t('father')}
@@ -387,6 +219,8 @@ export function QuickRelationshipForm({
             value={momId}
             onChange={setMomId}
             persons={persons}
+            linkedIds={linkedIds}
+            hint={hints.mother}
             excludeIds={[dadId, childId].filter(Boolean)}
             placeholder={t('searchByName')}
             label={t('mother')}
@@ -398,6 +232,8 @@ export function QuickRelationshipForm({
             value={childId}
             onChange={setChildId}
             persons={persons}
+            linkedIds={linkedIds}
+            hint={hints.child}
             excludeIds={[dadId, momId].filter(Boolean)}
             placeholder={t('searchByName')}
             label={t('child')}

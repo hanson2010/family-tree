@@ -13,7 +13,10 @@ import { PersonForm } from '@/components/PersonForm';
 import { AddRelationshipForm } from '@/components/AddRelationshipForm';
 import { QuickRelationshipForm } from '@/components/QuickRelationshipForm';
 import { ChangeRelationshipForm } from '@/components/ChangeRelationshipForm';
+import { ImportDialog } from '@/components/ImportDialog';
+import { GroupPhotoDialog } from '@/components/GroupPhotoDialog';
 import { GoogleIcon } from '@/components/GoogleIcon';
+import { BrandMark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -28,6 +31,8 @@ import { useLocale } from '@/components/LocaleProvider';
 import { cn } from '@/lib/utils';
 import type { Person, Relationship, GenerationRange, PersonFormData, RelationshipFormData, Gender } from '@/types';
 import { GenerationCalculator } from '@/lib/generation-calculator';
+import { connectedPersonIds, linkedPersonIds } from '@/lib/candidates';
+import { connectFiltered } from '@/lib/tree-filter';
 
 const SELECTED_PERSON_KEY = 'selectedPersonId';
 
@@ -65,6 +70,8 @@ export default function HomePage() {
   const [editingRelationship, setEditingRelationship] = useState<Relationship | null>(null);
 
   const [isQuickRelationshipFormOpen, setIsQuickRelationshipFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isGroupPhotoOpen, setIsGroupPhotoOpen] = useState(false);
   const [isDeleteRelationshipFormOpen, setIsDeleteRelationshipFormOpen] = useState(false);
 
   const [personToDelete, setPersonToDelete] = useState<Person | null>(null);
@@ -176,36 +183,37 @@ export default function HomePage() {
   }, [persons, relationships, selectedPersonId, generationRange]);
 
   // Apply filters
-  const filteredPersons = React.useMemo(() => {
-    return visiblePersons.filter(person => {
-      // Privacy filter - anonymous users can only see public persons
-      if (person.isPrivate) {
-        // Only show private persons to their creator
-        if (session?.user?.id !== person.createdBy) {
-          return false;
-        }
-      }
+  const { filteredPersons, connectorIds } = React.useMemo(() => {
+    // Privacy filter - only show private persons to their creator
+    const allowed = visiblePersons.filter(
+      (person) => !person.isPrivate || session?.user?.id === person.createdBy
+    );
 
-      // Gender filter
-      if (filterGenders.length > 0 && !filterGenders.includes(person.gender)) {
-        return false;
-      }
-
-      // Living in year filter - show only persons alive in the specified year
+    const matches = (person: Person) => {
+      if (filterGenders.length > 0 && !filterGenders.includes(person.gender)) return false;
+      // Living in year: born no later than, and not dead before, the year
       if (filterLivingInYear !== null) {
-        // Person must be born before or in the specified year
-        if (person.birthYear && person.birthYear > filterLivingInYear) {
-          return false;
-        }
-        // Person must not have died before the specified year
-        if (person.deathYear && person.deathYear < filterLivingInYear) {
-          return false;
-        }
+        if (person.birthYear && person.birthYear > filterLivingInYear) return false;
+        if (person.deathYear && person.deathYear < filterLivingInYear) return false;
       }
-
       return true;
-    });
-  }, [visiblePersons, session, filterGenders, filterLivingInYear]);
+    };
+
+    const isFiltering = filterGenders.length > 0 || filterLivingInYear !== null;
+    if (!isFiltering || !selectedPersonId) {
+      return { filteredPersons: allowed, connectorIds: new Set<string>() };
+    }
+
+    // One connected tree around the selected person: the matching persons, plus the
+    // non-matching persons needed to connect them, shown as connectors
+    const tree = connectFiltered(
+      selectedPersonId,
+      new Set(allowed.map((p) => p.id)),
+      new Set(allowed.filter(matches).map((p) => p.id)),
+      relationships
+    );
+    return { filteredPersons: allowed.filter((p) => tree.ids.has(p.id)), connectorIds: tree.connectorIds };
+  }, [visiblePersons, relationships, session, selectedPersonId, filterGenders, filterLivingInYear]);
 
   // Handlers
   const requireSignIn = useCallback(() => {
@@ -286,6 +294,18 @@ export default function HomePage() {
     if (!requireSignIn()) return;
     setIsMenuOpen(false);
     setIsQuickRelationshipFormOpen(true);
+  }, [requireSignIn]);
+
+  const handleImport = useCallback(() => {
+    if (!requireSignIn()) return;
+    setIsMenuOpen(false);
+    setIsImportOpen(true);
+  }, [requireSignIn]);
+
+  const handleGroupPhoto = useCallback(() => {
+    if (!requireSignIn()) return;
+    setIsMenuOpen(false);
+    setIsGroupPhotoOpen(true);
   }, [requireSignIn]);
 
   const handleDeleteRelationship = useCallback((_person: Person) => {
@@ -422,6 +442,21 @@ export default function HomePage() {
     return persons.find(p => p.id === selectedPersonId) || null;
   }, [persons, selectedPersonId]);
 
+  // Relationships between persons the user can see
+  const visibleRelationships = React.useMemo(() => {
+    const ids = new Set(persons.map((p) => p.id));
+    return relationships.filter((r) => ids.has(r.personAId) && ids.has(r.personBId));
+  }, [persons, relationships]);
+
+  const linkedIds = React.useMemo(() => linkedPersonIds(visibleRelationships), [visibleRelationships]);
+
+  // Persons the user created in the current family tree: everyone connected to the selected person
+  const ownPersonsInTree = React.useMemo(() => {
+    if (!selectedPersonId || !userId) return [];
+    const tree = connectedPersonIds(selectedPersonId, visibleRelationships);
+    return persons.filter((p) => tree.has(p.id) && p.createdBy === userId);
+  }, [persons, visibleRelationships, selectedPersonId, userId]);
+
   const canEditSelected = !!selectedPerson && !!userId && selectedPerson.createdBy === userId;
 
   const drawerBase =
@@ -451,6 +486,8 @@ export default function HomePage() {
             onAddPerson={handleAddPerson}
             onAddRelationship={handleAddRelationship}
             onQuickAddRelationship={handleQuickAddRelationship}
+            onImport={handleImport}
+            onGroupPhoto={handleGroupPhoto}
             onRefresh={handleRefresh}
             persons={persons}
             onSelectPerson={selectPerson}
@@ -476,9 +513,7 @@ export default function HomePage() {
           ) : persons.length === 0 ? (
             <div className="tree-canvas flex h-full items-center justify-center p-6">
               <div className="max-w-sm rounded-xl border bg-card p-8 text-center shadow-sm">
-                <span className="font-display mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-brand text-2xl font-semibold text-brand-foreground">
-                  族
-                </span>
+                <BrandMark className="mx-auto h-12 w-12 rounded-lg" />
                 <h2 className="font-display mt-4 text-xl font-semibold">{t('emptyTitle')}</h2>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {isAuthenticated ? t('emptyDescription') : t('signInToAdd')}
@@ -509,6 +544,7 @@ export default function HomePage() {
           ) : (
             <FamilyTreeCanvas
               persons={filteredPersons}
+              connectorIds={connectorIds}
               allPersons={persons}
               relationships={relationships}
               selectedPersonId={selectedPersonId}
@@ -571,6 +607,7 @@ export default function HomePage() {
         mode={relationshipFormMode}
         relationship={editingRelationship}
         persons={persons}
+        linkedIds={linkedIds}
         onSubmit={handleRelationshipFormSubmit}
         onClose={() => setIsRelationshipFormOpen(false)}
       />
@@ -579,8 +616,23 @@ export default function HomePage() {
       <QuickRelationshipForm
         isOpen={isQuickRelationshipFormOpen}
         persons={persons}
+        linkedIds={linkedIds}
         onSubmit={handleRelationshipFormSubmit}
         onClose={() => setIsQuickRelationshipFormOpen(false)}
+      />
+
+      <ImportDialog
+        isOpen={isImportOpen}
+        persons={persons}
+        onClose={() => setIsImportOpen(false)}
+        onImported={fetchData}
+      />
+
+      <GroupPhotoDialog
+        isOpen={isGroupPhotoOpen}
+        persons={ownPersonsInTree}
+        onClose={() => setIsGroupPhotoOpen(false)}
+        onSaved={fetchData}
       />
 
       {/* Modify or remove relationship form dialog */}

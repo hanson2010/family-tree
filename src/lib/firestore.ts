@@ -10,6 +10,8 @@ function getFirestore(): Firestore {
     firestoreInstance = new Firestore({
       projectId: process.env.GOOGLE_CLOUD_PROJECT,
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      // Optional fields left undefined (e.g. no courtesy name) are omitted instead of rejected
+      ignoreUndefinedProperties: true,
     });
   }
   return firestoreInstance;
@@ -20,6 +22,8 @@ export const COLLECTIONS = {
   USER: 'User',
   PERSON: 'Person',
   RELATIONSHIP: 'Relationship',
+  /** Faces saved for later, not yet assigned to a person */
+  AVATAR: 'Avatar',
 } as const;
 
 // Keep KINDS as an alias for backward compatibility

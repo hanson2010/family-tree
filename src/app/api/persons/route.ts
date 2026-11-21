@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, saveEntity, queryEntities, queryEntitiesByProperty } from '@/lib/firestore';
+import { KINDS, queryEntities } from '@/lib/firestore';
+import { findVisibleDuplicate } from '@/lib/person-duplicates';
+import { findOwnSavedAvatar, personRequestSchema, savePerson } from '@/lib/person-save';
 import type { Person, ApiResponse } from '@/types';
-import { personSchema } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 // GET /api/persons - List all persons (public persons for anonymous users)
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const validationResult = personSchema.safeParse(body);
+    const validationResult = personRequestSchema.safeParse(body);
 
     if (!validationResult.success) {
       return NextResponse.json<ApiResponse<never>>(
@@ -57,35 +58,22 @@ export async function POST(request: NextRequest) {
     const data = validationResult.data;
     const userId = session.user.id;
 
-    // Check for duplicate persons with the same name and birthday
-    // Allow duplicates if the existing person is private and not owned by the current user
-    const existingPersons = await queryEntitiesByProperty<Person>(KINDS.PERSON, 'name', data.name);
-    const duplicatePerson = existingPersons.find(person => {
-      // Check if birthday matches (both null or same values)
-      const birthYearMatch = person.birthYear === (data.birthYear ?? null);
-      const birthMonthMatch = person.birthMonth === (data.birthMonth ?? null);
-      const birthDayMatch = person.birthDay === (data.birthDay ?? null);
-      const birthdayMatch = birthYearMatch && birthMonthMatch && birthDayMatch;
-
-      // If birthday matches, check if it's a visible duplicate
-      if (birthdayMatch) {
-        // Allow if the existing person is private and not owned by current user
-        // (user can't see it, so they can create their own)
-        if (person.isPrivate && person.createdBy !== userId) {
-          return false;
-        }
-        return true;
-      }
-      return false;
-    });
-
-    if (duplicatePerson) {
+    if (await findVisibleDuplicate(data, userId)) {
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
           error: 'A person with this name and birthday already exists. Please check if this is the same person.',
         },
         { status: 409 } // Conflict status code
+      );
+    }
+
+    // A saved face is used as stored, not as sent by the browser
+    const savedAvatar = data.savedAvatarId ? await findOwnSavedAvatar(data.savedAvatarId, userId) : null;
+    if (data.savedAvatarId && !savedAvatar) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: 'The saved face is no longer available.' },
+        { status: 409 }
       );
     }
 
@@ -103,14 +91,14 @@ export async function POST(request: NextRequest) {
       deathYear: data.deathYear ?? null,
       deathMonth: data.deathMonth ?? null,
       deathDay: data.deathDay ?? null,
-      avatar: data.avatar ?? null,
+      avatar: savedAvatar?.image ?? data.avatar ?? null,
       isPrivate: data.isPrivate,
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
     };
 
-    await saveEntity(KINDS.PERSON, person);
+    await savePerson(person, savedAvatar?.id);
 
     return NextResponse.json<ApiResponse<Person>>(
       { success: true, data: person },

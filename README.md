@@ -1,223 +1,119 @@
 # Family Relationship Visualizer
 
-A sophisticated web application for modeling, visualizing, and interacting with complex family relationship structures. Built with Next.js 15, D3.js, and Google Cloud Platform.
+A web app for building and viewing family trees, labelled with Chinese kinship terms. Built with Next.js 16 and D3.js, it stores data in Google Firestore and runs on Google Cloud Run.
 
 ## Features
 
-- **Google Authentication** - Sign in with a Google account (OAuth 2.0)
-- **Privacy Controls** - Mark persons as private (visible only to creator)
-- **Relative Generation** - Generation numbers computed relative to selected person
-- **Centered Visualization** - Selected person displayed at center with 0–3 generations above and below
-- **Kinship Terms** - Each person in the tree is labelled with their Chinese kinship term relative to the selected person
-- **Gender-Specific Colors** - Blue gradient for males, Yellow/Gold gradient for females
-- **Precise Dates** - Optional month and day for birth/death and relationship dates
-- **Avatar Support** - Upload and display avatar images for each person
-- **Gemini Image Processing** - AI-powered smart cropping and compression for avatars
-- **Google Datastore** - Native Datastore for scalable, serverless data storage
-- **Cloud Run Deployment** - Containerized deployment on Google Cloud Run
+- Sign in with Google. Only a person's creator can edit or delete them.
+- Mark a person as private: visible only to their creator.
+- The tree is built around the selected person and shows 0–3 generations above and below, with generation numbers relative to that person.
+- Each generation is one row. A husband sits left of his partners (wife, then concubine, then betrothed), or right of them if that makes fewer parent–child lines cross; siblings run oldest to youngest, those without a birth year last; children sit under their parents.
+- Each person shows their Chinese kinship term relative to the selected person.
+- Relationship types: parent–child, sibling, half sibling, spouse, concubine, betrothed, adoptive parent, foster parent, sworn sibling.
+- Birth, death and relationship dates can include month and day (both optional).
+- One avatar per person, from a JPEG, PNG, GIF or WebP photo up to 10MB. Gemini finds the faces and each becomes a 256×256 JPEG; with several faces you choose one. Without a face found, the middle of the photo is used.
+- Avatars from a group photo: choose who each face is, from the persons you created in the current family tree (everyone connected to the selected person). Unused faces can be saved (up to 500 per user, visible only to you); the person form lists them to use for any person, including ones created later. A saved face is removed once used, or with its delete button. The photo itself is not stored.
+- In **Add Relationship** and **Add Family Relationships**, search covers name, courtesy name and art name. Suggestions list plausible persons first (gender, and a birth year fitting the other persons chosen: parent 15–60 years older than the child, mother 15–50, spouse within 20 years, concubine within 30), then persons without any relationship before others.
+- Import from text or scans: paste records such as a genealogy, or upload up to 6 page images or PDFs (each up to 10MB, 20MB in total). Gemini extracts persons and relationships; you review them before saving. Persons with the same name as one person in the tree are linked to them by default. The import is saved in one go, applies the same duplicate check as **Add Person**, and skips relationships that already exist.
 
-## Tech Stack
+## Run Locally
 
-- **Frontend**: Next.js 15 (App Router), React, TypeScript
-- **Authentication**: NextAuth.js v5 with Google OAuth
-- **UI Components**: shadcn/ui + Radix UI + Tailwind CSS
-- **Visualization**: D3.js v7 (force-directed graphs)
-- **State Management**: Zustand
-- **Database**: Google Datastore (Native Mode)
-- **AI**: Google Gemini (avatar processing)
-- **Deployment**: Docker + Google Cloud Run
+Requires Node.js 22.22+, a Google Cloud project with a Firestore database in Native mode and a Google OAuth client. A Gemini API key is optional locally.
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js 20+
-- Google Cloud account with Datastore enabled
-- Google OAuth client credentials
-- Google AI (Gemini) API key
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd family-tree
-```
-
-2. Install dependencies:
 ```bash
 npm install
+cp .env.local.example .env.local   # fill in the values; each is described in the file
+npm run dev                        # http://localhost:3000
 ```
 
-3. Copy environment variables:
-```bash
-cp .env.local.example .env.local
-```
+**Firestore:** create a service account with the Datastore Owner role, download its JSON key and set `GOOGLE_APPLICATION_CREDENTIALS` to that key's path. `GOOGLE_CLOUD_PROJECT` must be the project the key belongs to.
 
-4. Configure environment variables in `.env.local`:
-   - `AUTH_SECRET` - Generate with `openssl rand -base64 32`
-   - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` - From the Google OAuth client
-   - `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
-   - `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON
-   - `GOOGLE_AI_API_KEY` - From Google AI Studio
-   - `GOOGLE_AI_MODEL` - Gemini model name (e.g. `gemini-3.5-flash-lite`)
+**OAuth:** in Google Cloud Console → APIs & Services → Credentials, create an OAuth client ID of type "Web application". Add the app's URL as an authorized JavaScript origin and `<NEXTAUTH_URL>/auth/callback` as a redirect URI, e.g. `http://localhost:3000` and `http://localhost:3000/auth/callback`.
 
-   Alternatively, you can set a single `APP_SECRETS` JSON variable instead of individual secrets:
+**Without a Gemini key:** an uploaded avatar is the middle of the photo, a group photo gives that one avatar, and importing from text or scans fails with "Could not read the records". Everything else works.
+
+**Environment variables** already set in your shell or system (e.g. a user-level `GOOGLE_CLOUD_PROJECT`) take precedence over `.env.local`.
+
+**Behind an HTTP proxy:** Google sign-in and Gemini requests ignore `HTTPS_PROXY` unless `NODE_USE_ENV_PROXY=1` is also set; set `NO_PROXY=localhost,127.0.0.1,::1` as well. Firestore uses `HTTPS_PROXY` without it.
+
+## Deploy
+
+On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run using [cloudbuild.yaml](cloudbuild.yaml). One-time setup:
+
+1. Enable the APIs:
+   ```bash
+   gcloud services enable cloudbuild.googleapis.com run.googleapis.com secretmanager.googleapis.com
    ```
-   APP_SECRETS={"AUTH_SECRET":"...","GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","GOOGLE_AI_API_KEY":"..."}
+2. Store the four secrets as one JSON secret named `app-secrets`:
+   ```bash
+   echo -n '{"AUTH_SECRET":"...","GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","GOOGLE_AI_API_KEY":"..."}' \
+     | gcloud secrets create app-secrets --data-file=-
    ```
-   If `APP_SECRETS` is set, the individual variables above are ignored; its keys use the same names.
+3. Grant the Cloud Build service account its roles:
+   ```bash
+   PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+   CLOUD_BUILD_SA="$PROJECT_NUMBER@cloudbuild.gserviceaccount.com"
 
-5. Run development server:
-```bash
-npm run dev
-```
+   gcloud projects add-iam-policy-binding $PROJECT_ID \
+     --member="serviceAccount:$CLOUD_BUILD_SA" \
+     --role="roles/run.admin"
 
-6. Open [http://localhost:3000](http://localhost:3000)
+   gcloud projects add-iam-policy-binding $PROJECT_ID \
+     --member="serviceAccount:$CLOUD_BUILD_SA" \
+     --role="roles/iam.serviceAccountUser"
 
-### Google Cloud Setup
+   gcloud projects add-iam-policy-binding $PROJECT_ID \
+     --member="serviceAccount:$CLOUD_BUILD_SA" \
+     --role="roles/secretmanager.secretAccessor"
+   ```
+4. Connect the GitHub repository and create the trigger (or do this in Cloud Console → Cloud Build → Triggers):
+   ```bash
+   gcloud builds connections create github family-tree-connection \
+     --region=us-west1
 
-1. Create a new Google Cloud project
-2. Enable Datastore API
-3. Create a service account with Datastore Owner role
-4. Download service account JSON key
-5. Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+   gcloud builds repos create family-tree-repo \
+     --connection=family-tree-connection \
+     --repo-name=your-github-repo-name \
+     --region=us-west1
 
-### Google OAuth Setup
-
-1. In Google Cloud Console, go to APIs & Services > Credentials (configure the OAuth consent screen first if asked)
-2. Create an OAuth client ID of type "Web application":
-   - Authorized JavaScript origins: `http://localhost:3000` (development)
-   - Authorized redirect URIs: `http://localhost:3000/auth/callback`
-3. Copy the Client ID and Client Secret
-
-For production, add the deployed URL as an origin and `<deployed URL>/auth/callback` as a redirect URI.
-
-The redirect URI sent to Google is `NEXTAUTH_URL` + `/auth/callback`, so `NEXTAUTH_URL` must be the URL the app is served from.
-
-A user's id is their Google account id. Persons and relationships can only be edited by the user whose id is in their `createdBy` field.
-
-## Deployment
-
-Deployment is handled automatically via Cloud Build CI/CD on push to `main`.
-
-### Initial Setup
-
-1. **Enable required APIs:**
-```bash
-gcloud services enable cloudbuild.googleapis.com
-gcloud services enable run.googleapis.com
-gcloud services enable secretmanager.googleapis.com
-```
-
-2. **Create the combined secret in Secret Manager:**
-```bash
-echo -n '{"AUTH_SECRET":"your-auth-secret","GOOGLE_CLIENT_ID":"your-google-client-id","GOOGLE_CLIENT_SECRET":"your-google-client-secret","GOOGLE_AI_API_KEY":"your-gemini-api-key"}' | gcloud secrets create app-secrets --data-file=-
-```
-
-3. **Grant Cloud Build permissions:**
-```bash
-# Get Cloud Build service account
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-CLOUD_BUILD_SA="$PROJECT_NUMBER@cloudbuild.gserviceaccount.com"
-
-# Grant Cloud Run Admin role
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$CLOUD_BUILD_SA" \
-  --role="roles/run.admin"
-
-# Grant IAM Service Account User role
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$CLOUD_BUILD_SA" \
-  --role="roles/iam.serviceAccountUser"
-
-# Grant Secret Manager Secret Accessor role
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$CLOUD_BUILD_SA" \
-  --role="roles/secretmanager.secretAccessor"
-```
-
-4. **Create a repository connection (GitHub):**
-```bash
-# Create connection
-gcloud builds connections create github family-tree-connection \
-  --region=us-west1
-
-# Link your GitHub repository
-gcloud builds repos create family-tree-repo \
-  --connection=family-tree-connection \
-  --repo-name=your-github-repo-name \
-  --region=us-west1
-```
-
-5. **Create a build trigger:**
-```bash
-gcloud builds triggers create github \
-  --name="family-tree-deploy" \
-  --region=us-west1 \
-  --repo-name=your-github-repo-name \
-  --repo-owner=your-github-username \
-  --branch-pattern="^main$" \
-  --build-config=cloudbuild.yaml
-```
-
-Or configure via Cloud Console:
-- Go to **Cloud Build** → **Triggers** → **Create Trigger**
-- Select your GitHub repository
-- Set branch pattern (e.g., `^main$`)
-- Select **Cloud Build configuration file** → `cloudbuild.yaml`
-- Click **Create**
-
-6. **Update NEXTAUTH_URL in cloudbuild.yaml:**
-   After first deployment, update the URL in `cloudbuild.yaml`:
+   gcloud builds triggers create github \
+     --name="family-tree-deploy" \
+     --region=us-west1 \
+     --repo-name=your-github-repo-name \
+     --repo-owner=your-github-username \
+     --branch-pattern="^main$" \
+     --build-config=cloudbuild.yaml
+   ```
+5. Set `NEXTAUTH_URL` in `cloudbuild.yaml` to the deployed URL:
    ```yaml
-   --set-env-vars
-   - 'NEXTAUTH_URL=https://your-actual-cloud-run-url.a.run.app,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_AI_MODEL=gemini-3.5-flash-lite'
+   - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,NEXTAUTH_URL=https://your-cloud-run-url.a.run.app,GOOGLE_AI_MODEL=gemini-3.5-flash-lite'
    ```
+   Then add that URL and its `/auth/callback` redirect URI to the OAuth client.
 
 ## Usage
 
-### Adding Family Members
+- Sign in, then use **Add Person**, **Add Relationship**, **Import from text or scans** or **Avatars from a group photo** in the sidebar.
+- Click a person to select them. The view shows the whole tree, zoomed out no further than 9px text, and moves the selected person as close to the centre as the tree's edges allow; a tree too large at that size is shown in part. Double-click a person you created to edit them.
+- The gender and "living in year" filters keep the tree connected: matching persons are shown with the persons needed to connect them to the selected person, drawn grey and faded with a dashed ring. The selected person always stays. A person with no birth or death year matches the "living in year" filter.
+- Drag the background to pan.
+- Scroll or use +/− to zoom. The third zoom button returns to the view described above.
+- On screens narrower than 1024px, the header button opens the search/actions panel and the bar at the bottom opens the details panel.
+- The browser remembers the last selected person.
 
-1. Sign in with Google
-2. Click "Add Person" in the sidebar
-3. Fill in the person details:
-   - Name (required)
-   - Gender (required)
-   - Birth/Death dates (optional)
-   - Avatar (optional)
-   - Privacy setting
-4. Click Save
+## Open Items
 
-### Creating Relationships
-
-1. Sign in with Google
-2. Click "Add Relationship" in the sidebar
-3. Select Person A and Person B
-4. Choose relationship type:
-   - Parent - Child
-   - Sibling
-   - Half Sibling
-   - Spouse
-   - Concubine
-   - Betrothed
-   - Adoptive Parent
-   - Foster Parent
-   - Sworn Sibling
-5. Add dates if applicable
-6. Click Save
-
-### Navigation
-
-- **Click** on a person to select them as the center
-- **Double-click** a person you created to edit them
-- **Drag** nodes to reposition
-- **Scroll** or use the +/− buttons to zoom; the third button fits the whole tree in view
-- **Click and drag** background to pan
-- On screens narrower than 1024px, the search/actions panel opens from the header button and the details panel from the bar at the bottom
-
-Only the creator of a person can edit or delete them. The last selected person is remembered in the browser.
+| Item | Status |
+|------|--------|
+| Families (`Family` entity, `/api/families`) | Not built |
+| Export | Not built |
+| Avatars uploaded before face cropping | Stored as the original photos |
+| Relationship-type and branch filters | Not built |
+| Relationship list for signed-in users includes relationships of other users' private persons | Open privacy gap; the API should filter them like persons |
+| Deleting a person leaves their relationships | Open; should delete or block |
+| Relationship dialogs: layout redesign and remaining hard-coded Chinese texts | Not done |
+| Dark theme | Tokens exist; no toggle |
+| Zustand store (`src/store/index.ts`) | Unused; state lives in the page |
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).

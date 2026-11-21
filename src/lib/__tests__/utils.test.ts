@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import { cn, formatDate, getGenderColor } from '../utils';
 
 describe('cn (className merge utility)', () => {
