@@ -92,6 +92,7 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
 - Signed in, the sidebar offers **Add Person**, **Add Relationship**, **Add Family Relationships**, **Import from text or scans** and **Avatars from a group photo**.
 - Click a person to select them; double-click one you created to edit them. The right panel shows their details and relatives, and lets you change their relationships, merge another of your persons into them, or delete them with their relationships.
 - The gender and "living in year" filters keep the tree connected: persons needed to link the matches are shown faded with a dashed ring.
+- The reload button beside **Random person** loads the latest data, e.g. after changes through MCP, and keeps the selected person.
 - Point at a person to highlight their lines. Drag to pan, scroll or use +/− to zoom; the third zoom button returns to the full view.
 - On screens narrower than 1024px, the header button opens the sidebar and the bar at the bottom opens the details panel.
 
@@ -100,12 +101,13 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
 AI assistants can read and change the family tree through MCP at `<site URL>/api/mcp`, acting as you with the same rules as the website: they see public persons and yours, change only persons and relationships you created, and are refused duplicate public persons.
 
 1. Signed in, open **API tokens** (key icon in the header) and create a token. It is shown once; up to 10 per user. Revoking one stops it at once.
-2. Add the server to the client with the token as a Bearer header, e.g. for Claude Code:
+2. Add the server to the client with the token as a Bearer header, e.g. for Claude Code, in your project folder:
    ```bash
-   claude mcp add --transport http family-tree https://family-tree.pythoner.work/api/mcp --header "Authorization: Bearer <token>"
+   claude mcp add --scope project --transport http family-tree https://family-tree.pythoner.work/api/mcp --header "Authorization: Bearer <token>"
    ```
+   This saves the token in the folder's `.mcp.json`; never commit or share that file.
 
-Tools: `search_persons`, `get_person`, `create_person`, `update_person`, `delete_person`, `create_relationship`, `update_relationship`, `delete_relationship`. Avatar images are not returned.
+Tools: `search_persons`, `get_person`, `create_person`, `update_person`, `delete_person`, `create_relationship`, `update_relationship`, `delete_relationship`, and for avatars `get_person_avatar`, `set_person_avatar`, `remove_person_avatar`, `list_saved_faces`, `use_saved_face`. `set_person_avatar` takes base64 image data (JPEG, PNG, GIF or WebP, up to 10MB), not web links, and crops it like an upload in the person form.
 
 ## Open Items
 

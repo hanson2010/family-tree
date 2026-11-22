@@ -110,7 +110,7 @@ export default function TokensPage() {
     iso ? new Date(iso).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
   const cliCommand = (token: string) =>
-    `claude mcp add --transport http family-tree ${endpoint} --header "Authorization: Bearer ${token}"`;
+    `claude mcp add --scope project --transport http family-tree ${endpoint} --header "Authorization: Bearer ${token}"`;
   const jsonConfig = (token: string) =>
     JSON.stringify(
       { mcpServers: { 'family-tree': { type: 'http', url: endpoint, headers: { Authorization: `Bearer ${token}` } } } },
@@ -188,8 +188,6 @@ export default function TokensPage() {
                     <p className="text-sm text-muted-foreground">{t('tokenSetupOther')}</p>
                     <CodeBlock code={jsonConfig(created.token)} copyLabel={t('copy')} />
                   </div>
-
-                  <p className="text-xs text-muted-foreground">{t('tokenLeakHint')}</p>
                 </div>
               )}
             </section>

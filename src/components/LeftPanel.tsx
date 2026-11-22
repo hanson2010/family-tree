@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSession } from 'next-auth/react';
 import { useLocale } from '@/components/LocaleProvider';
-import { Search, UserPlus, GitBranch, Users, Shuffle, X, ScanText, Images } from 'lucide-react';
+import { Search, UserPlus, GitBranch, Users, Shuffle, X, ScanText, Images, RefreshCw } from 'lucide-react';
 import type { Person, Gender, GenerationRange } from '@/types';
 import { FilterControls } from '@/components/FilterControls';
 import { PersonAvatar } from '@/components/PersonAvatar';
@@ -21,6 +21,9 @@ interface LeftPanelProps {
   onImport: () => void;
   onGroupPhoto: () => void;
   onRefresh: () => void;
+  /** Load persons and relationships again, keeping the selected person */
+  onReload: () => void;
+  isReloading: boolean;
   persons: Person[];
   onSelectPerson: (personId: string) => void;
   // Filter props
@@ -42,6 +45,8 @@ export function LeftPanel({
   onImport,
   onGroupPhoto,
   onRefresh,
+  onReload,
+  isReloading,
   persons,
   onSelectPerson,
   filterGenders,
@@ -198,15 +203,29 @@ export function LeftPanel({
         )}
       </div>
 
-      <Button
-        variant="outline"
-        className="w-full justify-start bg-card"
-        onClick={onRefresh}
-        disabled={persons.length === 0}
-      >
-        <Shuffle className="mr-2 h-4 w-4" />
-        {t('refresh')}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          className="flex-1 justify-start bg-card"
+          onClick={onRefresh}
+          disabled={persons.length === 0}
+        >
+          <Shuffle className="mr-2 h-4 w-4" />
+          {t('refresh')}
+        </Button>
+        {/* Loads persons and relationships again, keeping the selected person */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="shrink-0 bg-card"
+          onClick={onReload}
+          disabled={isReloading}
+          title={t('reloadData')}
+          aria-label={t('reloadData')}
+        >
+          <RefreshCw className={cn('h-4 w-4', isReloading && 'animate-spin')} />
+        </Button>
+      </div>
 
       <FilterControls
         genders={filterGenders}

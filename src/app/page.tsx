@@ -369,6 +369,19 @@ export default function HomePage() {
     }
   }, [requireSignIn, toast, fetchData, t]);
 
+  // Load persons and relationships again (e.g. after changes through MCP). The selected person
+  // stays selected; if they no longer exist, the stored or a random person is chosen as on load.
+  const [isReloading, setIsReloading] = useState(false);
+  const handleReload = useCallback(async () => {
+    setIsReloading(true);
+    try {
+      await fetchData();
+      toast({ title: t('dataReloaded') });
+    } finally {
+      setIsReloading(false);
+    }
+  }, [fetchData, toast, t]);
+
   const handleRefresh = useCallback(() => {
     // Pick among the persons that satisfy the active filters
     const eligiblePersons = persons.filter(person => {
@@ -491,6 +504,8 @@ export default function HomePage() {
             onImport={handleImport}
             onGroupPhoto={handleGroupPhoto}
             onRefresh={handleRefresh}
+            onReload={handleReload}
+            isReloading={isReloading}
             persons={persons}
             onSelectPerson={selectPerson}
             filterGenders={filterGenders}

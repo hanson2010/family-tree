@@ -9,9 +9,12 @@ import {
   getVisiblePerson,
   getVisibleRelationship,
   listVisiblePersons,
+  listSavedFaces,
   listVisibleRelationships,
+  setPersonAvatar,
   updatePerson,
   updateRelationship,
+  useSavedFace,
 } from '@/lib/family-service';
 import { aliases } from '@/lib/person-identity';
 import type { Person, Relationship } from '@/types';
@@ -100,15 +103,37 @@ function relationshipSummary(r: Relationship, names: Map<string, string>) {
 
 const ok = (value: unknown): CallToolResult => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });
 
-/** Run a tool; a refused request becomes a tool error the agent can read and correct */
+/** A refused request becomes a tool error the agent can read and correct */
+function failure(error: unknown): CallToolResult {
+  if (error instanceof ServiceError) return { isError: true, content: [{ type: 'text', text: error.message }] };
+  console.error('MCP tool failed:', error);
+  return { isError: true, content: [{ type: 'text', text: 'The operation failed.' }] };
+}
+
+/** Run a tool and return its result as JSON text */
 async function run(work: () => Promise<unknown>): Promise<CallToolResult> {
   try {
     return ok(await work());
   } catch (error) {
-    if (error instanceof ServiceError) return { isError: true, content: [{ type: 'text', text: error.message }] };
-    console.error('MCP tool failed:', error);
-    return { isError: true, content: [{ type: 'text', text: 'The operation failed.' }] };
+    return failure(error);
   }
+}
+
+/** A stored avatar (a data: URL) as MCP image content */
+function imageContent(dataUrl: string) {
+  const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+  return { type: 'image' as const, mimeType: match?.[1] ?? 'image/jpeg', data: match?.[2] ?? '' };
+}
+
+/** Base64 image data, plain or as a data: URL; web links are refused, not fetched */
+function decodeImage(image: string): Buffer {
+  const trimmed = image.trim();
+  if (/^https?:/i.test(trimmed)) throw new ServiceError(400, 'Web links are not fetched; send the image data as base64.');
+  const base64 = /^data:image\/[a-z0-9.+-]+;base64,/i.test(trimmed) ? trimmed.slice(trimmed.indexOf(',') + 1) : trimmed;
+  const compact = base64.replace(/\s+/g, '');
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) throw new ServiceError(400, 'The image is not valid base64 data.');
+  if (compact.length > Math.ceil((10 * 1024 * 1024 * 4) / 3) + 4) throw new ServiceError(400, 'The image is larger than 10MB.');
+  return Buffer.from(compact, 'base64');
 }
 
 export function createFamilyTreeServer(userId: string): McpServer {
@@ -225,6 +250,90 @@ with search_persons before creating them; creating a public person that matches 
       annotations: { destructiveHint: true },
     },
     async ({ id }) => run(async () => ({ deleted: id, ...(await deletePerson(userId, id)) }))
+  );
+
+  server.registerTool(
+    'get_person_avatar',
+    {
+      title: 'Get a person’s avatar',
+      description: 'The avatar image of a person you can see, as a 256×256 JPEG.',
+      inputSchema: z.object({ id: z.string() }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ id }) => {
+      try {
+        const person = await getVisiblePerson(id, userId);
+        if (!person.avatar) return ok({ id, name: person.name, avatar: null });
+        return { content: [{ type: 'text', text: `Avatar of ${person.name}` }, imageContent(person.avatar)] };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'set_person_avatar',
+    {
+      title: 'Set a person’s avatar',
+      description:
+        'Give one of your persons an avatar from an image you send: base64 data or a data: URL (JPEG, PNG, GIF or WebP, up to 10MB). The image is scaled so its short edge is 256px and its middle square is kept. Web links are not fetched.',
+      inputSchema: z.object({
+        id: z.string(),
+        image: z.string().min(1).describe('Base64 image data, or a data:image/...;base64,... URL'),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ id, image }) =>
+      run(async () => {
+        const person = await setPersonAvatar(userId, id, decodeImage(image));
+        return personSummary(person, userId);
+      })
+  );
+
+  server.registerTool(
+    'remove_person_avatar',
+    {
+      title: 'Remove a person’s avatar',
+      description: 'Remove the avatar of one of your persons. Cannot be undone.',
+      inputSchema: z.object({ id: z.string() }),
+      annotations: { destructiveHint: true, idempotentHint: true },
+    },
+    async ({ id }) => run(async () => personSummary(await setPersonAvatar(userId, id, null), userId))
+  );
+
+  server.registerTool(
+    'list_saved_faces',
+    {
+      title: 'List saved faces',
+      description:
+        'Your faces saved from group photos and not yet used, newest first, each as an image with its id. Give one to a person with use_saved_face.',
+      inputSchema: z.object({ limit: z.number().int().min(1).max(30).optional().describe('Default 12') }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ limit }) => {
+      try {
+        const faces = await listSavedFaces(userId);
+        const shown = faces.slice(0, limit ?? 12);
+        return {
+          content: [
+            { type: 'text', text: `${faces.length} saved faces; showing ${shown.length}, newest first.` },
+            ...shown.flatMap((face) => [{ type: 'text' as const, text: `Saved face id: ${face.id}` }, imageContent(face.image)]),
+          ],
+        };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'use_saved_face',
+    {
+      title: 'Use a saved face as an avatar',
+      description: 'Give one of your persons one of your saved faces as their avatar; the face leaves the saved list.',
+      inputSchema: z.object({ personId: z.string(), faceId: z.string() }),
+    },
+    async ({ personId, faceId }) => run(async () => personSummary(await useSavedFace(userId, personId, faceId), userId))
   );
 
   server.registerTool(

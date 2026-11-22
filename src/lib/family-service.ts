@@ -4,7 +4,8 @@ import { KINDS, getEntity, getFirestore, queryEntities, queryEntitiesByProperty 
 import { describe, findVisibleDuplicate } from '@/lib/person-duplicates';
 import { findOwnSavedAvatar, personRequestSchema, reorderMarriages, savePerson } from '@/lib/person-save';
 import { ORDERED_MARRIAGE_TYPES, shouldSwapPartners } from '@/lib/relationship-direction';
-import type { Person, Relationship } from '@/types';
+import type { Person, Relationship, SavedAvatar } from '@/types';
+import { centeredAvatar } from '@/lib/faces';
 import { relationshipSchema } from '@/types';
 
 /**
@@ -125,6 +126,51 @@ export async function updatePerson(userId: string | undefined, id: string, input
   await savePerson(updated, savedAvatar?.id);
   // A changed gender can change which partner comes first in this person's marriages
   if (updated.gender !== existing.gender) await reorderMarriages(id, updated.gender);
+  return updated;
+}
+
+// ---------------------------------------------------------------- avatars
+
+/** Largest image accepted for an avatar, as for uploads in the app */
+const MAX_AVATAR_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Give one of the user's persons an avatar made from an image: scaled so the short edge is 256px,
+ * then the middle square, as uploads in the person form. `null` removes the avatar.
+ */
+export async function setPersonAvatar(userId: string | undefined, id: string, image: Buffer | null): Promise<Person> {
+  const uid = requireUser(userId);
+  const person = await ownPerson(id, uid);
+  let avatar: string | null = null;
+  if (image) {
+    if (image.length > MAX_AVATAR_IMAGE_BYTES) throw new ServiceError(400, 'The image is larger than 10MB.');
+    try {
+      avatar = await centeredAvatar(image);
+    } catch {
+      throw new ServiceError(400, 'The image could not be read. Send a JPEG, PNG, GIF or WebP image.');
+    }
+  }
+  const updated: Person = { ...person, avatar, updatedAt: new Date() };
+  await savePerson(updated);
+  return updated;
+}
+
+/** The user's saved faces from group photos, newest first */
+export async function listSavedFaces(userId: string | undefined): Promise<SavedAvatar[]> {
+  const uid = requireUser(userId);
+  const faces = await queryEntitiesByProperty<SavedAvatar>(KINDS.AVATAR, 'createdBy', uid);
+  const time = (v: unknown) => (v instanceof Date ? v.getTime() : (v as { toMillis?: () => number })?.toMillis?.() ?? 0);
+  return faces.sort((a, b) => time(b.createdAt) - time(a.createdAt));
+}
+
+/** Give a person one of the user's saved faces; the face leaves the saved list in the same step */
+export async function useSavedFace(userId: string | undefined, personId: string, faceId: string): Promise<Person> {
+  const uid = requireUser(userId);
+  const person = await ownPerson(personId, uid);
+  const face = await findOwnSavedAvatar(faceId, uid);
+  if (!face) throw new ServiceError(404, 'Saved face not found');
+  const updated: Person = { ...person, avatar: face.image, updatedAt: new Date() };
+  await savePerson(updated, face.id);
   return updated;
 }
 
