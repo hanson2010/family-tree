@@ -3,9 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { auth } from '@/lib/auth';
 import { KINDS, getEntity, getFirestore, queryEntities } from '@/lib/firestore';
 import { importCommitSchema, type ImportRef, type ImportResult } from '@/lib/import';
-import { findVisibleDuplicate } from '@/lib/person-duplicates';
+import { describe } from '@/lib/person-duplicates';
+import { isSamePerson } from '@/lib/person-identity';
 import type { ApiResponse, Person, Relationship } from '@/types';
-import { Gender, RelationshipType } from '@/types';
+import { RelationshipType } from '@/types';
+import { shouldSwapPartners } from '@/lib/relationship-direction';
 
 const fail = (error: string, status: number) => NextResponse.json<ApiResponse<never>>({ success: false, error }, { status });
 
@@ -34,13 +36,19 @@ export async function POST(request: NextRequest) {
       return fail('A relationship refers to a person not in the import.', 400);
     }
 
-    // Same check as adding one person: no visible person with the same name and birth date
-    const duplicates: string[] = [];
-    for (const p of persons) {
-      if (await findVisibleDuplicate(p, userId)) duplicates.push(p.name);
-    }
-    if (duplicates.length > 0) {
-      return fail(`Already in the tree with the same birth date: ${duplicates.join(', ')}`, 409);
+    // Public persons must not duplicate one already in the tree, nor another person in this import
+    if (!isPrivate) {
+      const visible = (await queryEntities<Person>(KINDS.PERSON)).filter((p) => !p.isPrivate || p.createdBy === userId);
+      const problems: string[] = [];
+      persons.forEach((p, i) => {
+        const existing = visible.find((v) => isSamePerson(p, v));
+        if (existing) problems.push(`${p.name} = ${describe(existing)}`);
+        const earlier = persons.slice(0, i).find((q) => isSamePerson(p, q));
+        if (earlier) problems.push(`${p.name} = ${earlier.name} (twice in this import)`);
+      });
+      if (problems.length > 0) {
+        return fail(`These look like persons already in the tree: ${problems.join('; ')}`, 409);
+      }
     }
 
     const now = new Date();
@@ -88,13 +96,8 @@ export async function POST(request: NextRequest) {
         continue;
       }
       known.add(signature(r.type, a.id, b.id));
-      // Stored as elsewhere in the app: a wife as A in a marriage, the husband as A for a concubine
-      const swap =
-        (r.type === RelationshipType.SPOUSE &&
-          ((b.gender === Gender.FEMALE && a.gender !== Gender.FEMALE) ||
-            (a.gender === Gender.MALE && b.gender !== Gender.MALE))) ||
-        (r.type === RelationshipType.CONCUBINE && b.gender === Gender.MALE && a.gender !== Gender.MALE);
-      if (swap) [a, b] = [b, a];
+      // Spouse and concubine are stored with the woman as person A, as elsewhere in the app
+      if (shouldSwapPartners(r.type, a.gender, b.gender)) [a, b] = [b, a];
       newRelationships.push({
         id: uuidv4(),
         personAId: a.id,

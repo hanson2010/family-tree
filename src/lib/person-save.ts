@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { KINDS, getEntity, getFirestore } from '@/lib/firestore';
-import type { Person, SavedAvatar } from '@/types';
+import { KINDS, getEntity, getFirestore, queryEntitiesByProperty } from '@/lib/firestore';
+import { ORDERED_MARRIAGE_TYPES, shouldSwapPartners } from '@/lib/relationship-direction';
+import type { Gender, Person, Relationship, SavedAvatar } from '@/types';
 import { personSchema } from '@/types';
 
 /** A person from the form, optionally using one of the user's saved faces as the avatar */
@@ -10,6 +11,31 @@ export const personRequestSchema = personSchema.extend({ savedAvatarId: z.string
 export async function findOwnSavedAvatar(id: string, userId: string): Promise<SavedAvatar | null> {
   const avatar = await getEntity<SavedAvatar>(KINDS.AVATAR, id);
   return avatar && avatar.createdBy === userId ? avatar : null;
+}
+
+/**
+ * Put the woman first (person A) in each spouse and concubine relationship of a person whose
+ * gender is `gender`, as all marriages are stored. Same-sex and unknown-gender pairs keep their order.
+ */
+export async function reorderMarriages(personId: string, gender: Gender): Promise<void> {
+  const marriages = [
+    ...(await queryEntitiesByProperty<Relationship>(KINDS.RELATIONSHIP, 'personAId', personId)),
+    ...(await queryEntitiesByProperty<Relationship>(KINDS.RELATIONSHIP, 'personBId', personId)),
+  ].filter((r) => ORDERED_MARRIAGE_TYPES.includes(r.type));
+  const db = getFirestore();
+  const batch = db.batch();
+  let changes = 0;
+  for (const r of marriages) {
+    const partnerId = r.personAId === personId ? r.personBId : r.personAId;
+    const partner = await getEntity<Person>(KINDS.PERSON, partnerId);
+    const genderA = r.personAId === personId ? gender : partner?.gender;
+    const genderB = r.personBId === personId ? gender : partner?.gender;
+    if (shouldSwapPartners(r.type, genderA, genderB)) {
+      batch.update(db.collection(KINDS.RELATIONSHIP).doc(r.id), { personAId: r.personBId, personBId: r.personAId });
+      changes++;
+    }
+  }
+  if (changes > 0) await batch.commit();
 }
 
 /**

@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
+import { GEMINI_ISSUE_KEYS } from '@/lib/i18n';
 import type { ApiResponse, Person, PersonFormData, Gender, AvatarUploadResponse, SavedAvatar } from '@/types';
 import { Gender as GenderEnum } from '@/types';
 import { Upload, X, User, Loader2 } from 'lucide-react';
@@ -143,6 +144,9 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
       });
 
       const result: AvatarUploadResponse = await response.json();
+      if (result.success && result.geminiIssue) {
+        toast({ title: t('facesNotDetected'), description: t(GEMINI_ISSUE_KEYS[result.geminiIssue]) });
+      }
 
       if (result.success && result.avatars.length > 1) {
         setFaceChoices(result.avatars);

@@ -8,7 +8,7 @@ import { PersonAvatar } from '@/components/PersonAvatar';
 import type { Person, Relationship } from '@/types';
 import { Gender, RelationshipType } from '@/types';
 import type { TranslationKey } from '@/lib/i18n';
-import { GitBranch, Lock, MousePointerClick, Pencil, Trash2 } from 'lucide-react';
+import { GitBranch, GitMerge, Lock, MousePointerClick, Pencil, Trash2 } from 'lucide-react';
 
 interface PersonDetailsPanelProps {
   person: Person | null;
@@ -19,6 +19,8 @@ interface PersonDetailsPanelProps {
   onSelectPerson: (personId: string) => void;
   onEdit: (person: Person) => void;
   onDelete: (person: Person) => void;
+  /** Merge another person into this one */
+  onMerge?: (person: Person) => void;
   onChangeRelationships?: (person: Person) => void;
 }
 
@@ -45,6 +47,7 @@ export function PersonDetailsPanel({
   onSelectPerson,
   onEdit,
   onDelete,
+  onMerge,
   onChangeRelationships,
 }: PersonDetailsPanelProps) {
   const { t, locale } = useLocale();
@@ -207,6 +210,12 @@ export function PersonDetailsPanel({
             <Button variant="outline" size="sm" className="w-full justify-start bg-card" onClick={() => onEdit(person)}>
               <Pencil className="mr-2 h-4 w-4" />
               {t('editPerson')}
+            </Button>
+          )}
+          {canEdit && onMerge && (
+            <Button variant="outline" size="sm" className="w-full justify-start bg-card" onClick={() => onMerge(person)}>
+              <GitMerge className="mr-2 h-4 w-4" />
+              {t('mergePerson')}
             </Button>
           )}
           {onChangeRelationships && (

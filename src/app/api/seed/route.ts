@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { KINDS, saveEntity, queryEntities } from '@/lib/firestore';
 import type { Person, Relationship, ApiResponse } from '@/types';
+import { shouldSwapPartners } from '@/lib/relationship-direction';
 import { Gender, RelationshipType } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -91,13 +92,13 @@ export async function POST(request: NextRequest) {
     // Create relationships
     const relationships: Relationship[] = [];
 
-    // Helper function to create relationship
-    // For SPOUSE relationships, creates bidirectional relationships
-    // For CONCUBINE, creates unidirectional (personA is master, personB is concubine)
+    // One record per relationship; spouse and concubine with the woman as person A
+    const genderOf = new Map(persons.map((p) => [p.id, p.gender]));
     const createRel = (nameA: string, nameB: string, type: RelationshipType) => {
-      const idA = personIdMap.get(nameA);
-      const idB = personIdMap.get(nameB);
+      let idA = personIdMap.get(nameA);
+      let idB = personIdMap.get(nameB);
       if (idA && idB) {
+        if (shouldSwapPartners(type, genderOf.get(idA), genderOf.get(idB))) [idA, idB] = [idB, idA];
         const rel: Relationship = {
           id: uuidv4(),
           personAId: idA,
@@ -109,21 +110,6 @@ export async function POST(request: NextRequest) {
         };
         relationships.push(rel);
         saveEntity(KINDS.RELATIONSHIP, rel);
-
-        // For SPOUSE relationships, create the reverse relationship too
-        if (type === RelationshipType.SPOUSE) {
-          const reverseRel: Relationship = {
-            id: uuidv4(),
-            personAId: idB,
-            personBId: idA,
-            type,
-            createdBy: userId,
-            createdAt: now,
-            updatedAt: now,
-          };
-          relationships.push(reverseRel);
-          saveEntity(KINDS.RELATIONSHIP, reverseRel);
-        }
       }
     };
 

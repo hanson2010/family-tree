@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Person } from '@/types';
 import { Gender, RelationshipType, personSchema } from '@/types';
+import { isSamePerson } from '@/lib/person-identity';
 
 /** A person found by Gemini, with a key that relationships refer to */
 export interface ExtractedPerson {
@@ -69,17 +70,17 @@ export interface ReviewRelationship extends ExtractedRelationship {
 }
 
 /**
- * The existing person an extracted one most likely is: same name, and the same birth year
- * when both have one. Only an unambiguous match counts.
+ * The existing person an extracted one most likely is, with the same birth year when both have
+ * one. A person with the same name comes first; otherwise one whose name, 字 or 号 (alone or after
+ * the surname) equals the other's name, e.g. 蒋介石 and 蒋中正 (字 介石). Only an unambiguous
+ * match counts.
  */
 export function findExistingMatch(person: ExtractedPerson, existing: Person[]): Person | null {
-  const name = person.name.trim();
-  const candidates = existing.filter(
-    (p) =>
-      p.name.trim() === name &&
-      (person.birthYear == null || p.birthYear == null || p.birthYear === person.birthYear)
-  );
-  return candidates.length === 1 ? candidates[0] : null;
+  // Same rule as refusing duplicates: names match and birth dates do not tell them apart
+  const same = existing.filter((p) => isSamePerson(person, p));
+  const byName = same.filter((p) => p.name.trim() === person.name.trim());
+  if (byName.length > 0) return byName.length === 1 ? byName[0] : null;
+  return same.length === 1 ? same[0] : null;
 }
 
 export function toReview(extraction: Extraction, existing: Person[]): {

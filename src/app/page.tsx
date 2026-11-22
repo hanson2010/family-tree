@@ -15,6 +15,7 @@ import { QuickRelationshipForm } from '@/components/QuickRelationshipForm';
 import { ChangeRelationshipForm } from '@/components/ChangeRelationshipForm';
 import { ImportDialog } from '@/components/ImportDialog';
 import { GroupPhotoDialog } from '@/components/GroupPhotoDialog';
+import { MergePersonDialog } from '@/components/MergePersonDialog';
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { BrandMark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
@@ -72,6 +73,7 @@ export default function HomePage() {
   const [isQuickRelationshipFormOpen, setIsQuickRelationshipFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isGroupPhotoOpen, setIsGroupPhotoOpen] = useState(false);
+  const [mergingPerson, setMergingPerson] = useState<Person | null>(null);
   const [isDeleteRelationshipFormOpen, setIsDeleteRelationshipFormOpen] = useState(false);
 
   const [personToDelete, setPersonToDelete] = useState<Person | null>(null);
@@ -587,6 +589,7 @@ export default function HomePage() {
             onSelectPerson={selectPerson}
             onEdit={handleEditPerson}
             onDelete={handleDeletePerson}
+            onMerge={(person) => setMergingPerson(person)}
             onChangeRelationships={handleDeleteRelationship}
           />
         </aside>
@@ -626,6 +629,19 @@ export default function HomePage() {
         persons={persons}
         onClose={() => setIsImportOpen(false)}
         onImported={fetchData}
+      />
+
+      <MergePersonDialog
+        isOpen={!!mergingPerson}
+        person={mergingPerson}
+        candidates={persons.filter((p) => !!userId && p.createdBy === userId)}
+        linkedIds={linkedIds}
+        relationships={relationships}
+        onClose={() => setMergingPerson(null)}
+        onMerged={async (keptId) => {
+          await fetchData();
+          selectPerson(keptId);
+        }}
       />
 
       <GroupPhotoDialog

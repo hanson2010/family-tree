@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { KINDS, getEntity, deleteEntity } from '@/lib/firestore';
-import { findOwnSavedAvatar, personRequestSchema, savePerson } from '@/lib/person-save';
+import { findOwnSavedAvatar, personRequestSchema, reorderMarriages, savePerson } from '@/lib/person-save';
+import { describe, findVisibleDuplicate } from '@/lib/person-duplicates';
 import type { Person, ApiResponse } from '@/types';
 
 // GET /api/persons/[id] - Get a single person
@@ -88,6 +89,16 @@ export async function PUT(
     }
 
     const data = validationResult.data;
+
+    // A public person must not duplicate another one already in the tree
+    const duplicate = data.isPrivate ? null : await findVisibleDuplicate(data, session.user.id, [id]);
+    if (duplicate) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: `Already in the tree: ${describe(duplicate)}. This looks like the same person.` },
+        { status: 409 }
+      );
+    }
+
     // A saved face is used as stored, not as sent by the browser
     const savedAvatar = data.savedAvatarId ? await findOwnSavedAvatar(data.savedAvatarId, session.user.id) : null;
     if (data.savedAvatarId && !savedAvatar) {
@@ -115,6 +126,11 @@ export async function PUT(
     };
 
     await savePerson(updatedPerson, savedAvatar?.id);
+
+    // A changed gender can change which partner comes first in this person's marriages
+    if (updatedPerson.gender !== existingPerson.gender) {
+      await reorderMarriages(id, updatedPerson.gender);
+    }
 
     return NextResponse.json<ApiResponse<Person>>({
       success: true,

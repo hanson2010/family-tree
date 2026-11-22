@@ -163,7 +163,15 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  /** Why a Gemini call failed, when it did */
+  geminiIssue?: GeminiIssue;
 }
+
+/**
+ * Why a Gemini call failed: credits or billing used up, quota or rate limit reached, API key
+ * missing or invalid, Gemini temporarily down, Gemini not reachable, or something else.
+ */
+export type GeminiIssue = 'billing' | 'quota' | 'key' | 'unavailable' | 'unreachable' | 'failed';
 
 /** A face saved for later; only its creator sees it, until it is used for a person */
 export interface SavedAvatar {
@@ -180,6 +188,8 @@ export interface AvatarUploadResponse {
   avatars: string[];
   /** False when no face was found and the single avatar is the middle of the photo */
   detected: boolean;
+  /** Set when faces could not be looked for because the Gemini call failed */
+  geminiIssue?: GeminiIssue;
 }
 
 // Zod validation schemas

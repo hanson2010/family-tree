@@ -1,6 +1,8 @@
 // Internationalization system for Family Tree application
 // Supports Chinese (Simplified) and English
 
+import type { GeminiIssue } from '@/types';
+
 export type Locale = 'zh' | 'en';
 
 export const defaultLocale: Locale = 'zh';
@@ -34,6 +36,7 @@ export const translations = {
     legend: '图例',
     otherRelations: '其他关系',
     connectorLegend: '不符合筛选，用于连接',
+    marriageOrder: '第几次婚姻（按开始日期）',
     zoomIn: '放大',
     zoomOut: '缩小',
     fitView: '适应窗口',
@@ -74,6 +77,13 @@ export const translations = {
     extract: '识别',
     extracting: '正在识别，可能需要一分钟……',
     extractFailed: '识别失败',
+    geminiBilling: 'Gemini 额度已用完，请在 Google AI Studio 中充值或开启结算。',
+    geminiQuota: 'Gemini 请求过多或配额已用完，请稍后再试。',
+    geminiKey: 'Gemini API 密钥缺失或无效。',
+    geminiUnavailable: 'Gemini 暂时不可用，请稍后再试。',
+    geminiUnreachable: '无法连接 Gemini（网络或代理问题）。',
+    geminiFailed: 'Gemini 调用失败。',
+    facesNotDetected: '未能识别人脸，已使用照片中间部分',
     nothingFound: '没有找到人物',
     personsLabel: '人物',
     relationshipsLabel: '关系',
@@ -92,6 +102,15 @@ export const translations = {
     groupPhoto: '从合影设置头像',
     groupPhotoDescription: '上传一张合影，为每张人脸选择对应的人物。可选的是当前家谱中你创建的人物。',
     unlinked: '未关联',
+    mergePerson: '合并人物',
+    mergeWith: '与此人合并',
+    mergeDescription: '把另一位人物合并到「{name}」：其关系转移到「{name}」，然后删除。只能合并你创建的人物。',
+    mergeSameDetails: '两人的资料相同。',
+    mergeRelationshipsMoved: '转移的关系',
+    mergeRelationshipsDropped: '删除的重复关系',
+    mergeWarning: '「{name}」将被删除，无法撤销。',
+    merge: '合并',
+    personsMerged: '人物已合并',
     keepUnusedFaces: '保存未使用的人脸，以后再分配',
     facesSavedForLater: '已保存以后分配的人脸',
     savedFaces: '已保存的人脸（点击使用）',
@@ -251,6 +270,7 @@ export const translations = {
     legend: 'Legend',
     otherRelations: 'Other relations',
     connectorLegend: 'Not matching; shown to connect',
+    marriageOrder: 'Marriage order (by start date)',
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     fitView: 'Fit to view',
@@ -293,6 +313,13 @@ export const translations = {
     extract: 'Read records',
     extracting: 'Reading the records; this can take a minute…',
     extractFailed: 'Could not read the records',
+    geminiBilling: 'Gemini credits are used up. Add credits or enable billing in Google AI Studio.',
+    geminiQuota: 'Gemini quota or rate limit reached. Try again later.',
+    geminiKey: 'The Gemini API key is missing or invalid.',
+    geminiUnavailable: 'Gemini is temporarily unavailable. Try again later.',
+    geminiUnreachable: 'Gemini cannot be reached (network or proxy).',
+    geminiFailed: 'The Gemini call failed.',
+    facesNotDetected: 'Faces not detected; the middle of the photo is used',
     nothingFound: 'No persons found',
     personsLabel: 'Persons',
     relationshipsLabel: 'Relationships',
@@ -312,6 +339,15 @@ export const translations = {
     groupPhotoDescription:
       'Upload a group photo and choose who each face is. You can choose persons you created in the current family tree.',
     unlinked: 'Unlinked',
+    mergePerson: 'Merge with another person',
+    mergeWith: 'Merge with',
+    mergeDescription: 'Merge another person into {name}: their relationships move to {name}, then they are deleted. Only persons you created can be merged.',
+    mergeSameDetails: 'Both have the same details.',
+    mergeRelationshipsMoved: 'Relationships moved',
+    mergeRelationshipsDropped: 'Duplicate relationships deleted',
+    mergeWarning: '{name} will be deleted. This cannot be undone.',
+    merge: 'Merge',
+    personsMerged: 'Persons merged',
     keepUnusedFaces: 'Save unused faces to assign later',
     facesSavedForLater: 'Faces saved for later',
     savedFaces: 'Saved faces (click to use)',
@@ -453,6 +489,16 @@ export const translations = {
 } as const;
 
 export type TranslationKey = keyof typeof translations.zh;
+
+/** Message explaining each kind of Gemini failure */
+export const GEMINI_ISSUE_KEYS: Record<GeminiIssue, TranslationKey> = {
+  billing: 'geminiBilling',
+  quota: 'geminiQuota',
+  key: 'geminiKey',
+  unavailable: 'geminiUnavailable',
+  unreachable: 'geminiUnreachable',
+  failed: 'geminiFailed',
+};
 
 export function t(locale: Locale, key: TranslationKey): string {
   return translations[locale][key] || translations.en[key] || key;

@@ -31,8 +31,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { avatars, detected } = await avatarsFromPhoto(Buffer.from(await file.arrayBuffer()));
-    return NextResponse.json<AvatarUploadResponse>({ success: true, avatars, detected });
+    const { avatars, detected, geminiIssue } = await avatarsFromPhoto(Buffer.from(await file.arrayBuffer()));
+    return NextResponse.json<AvatarUploadResponse>({ success: true, avatars, detected, geminiIssue });
   } catch (error) {
     console.error('Error processing avatar:', error);
     return NextResponse.json<ApiResponse<never>>({ success: false, error: 'Failed to process avatar' }, { status: 500 });

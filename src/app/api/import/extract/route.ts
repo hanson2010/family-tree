@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { extractFamily, type SourceFile } from '@/lib/import-extract';
+import { GeminiCallError } from '@/lib/gemini';
 import type { Extraction } from '@/lib/import';
 import type { ApiResponse } from '@/types';
 
@@ -38,6 +39,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json<ApiResponse<Extraction>>({ success: true, data: extraction });
   } catch (error) {
     console.error('Error extracting family records:', error);
+    if (error instanceof GeminiCallError) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: error.message, geminiIssue: error.issue },
+        { status: 502 }
+      );
+    }
     return fail('Failed to read the records', 500);
   }
 }

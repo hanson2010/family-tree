@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
-import type { TranslationKey } from '@/lib/i18n';
+import { GEMINI_ISSUE_KEYS, type TranslationKey } from '@/lib/i18n';
 import {
   buildCommit,
   toReview,
@@ -80,6 +80,7 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
       files.forEach((f) => form.append('files', f));
       const response = await fetch('/api/import/extract', { method: 'POST', body: form });
       const result: ApiResponse<Extraction> = await response.json();
+      if (result.geminiIssue) throw new Error(t(GEMINI_ISSUE_KEYS[result.geminiIssue]));
       if (!result.success || !result.data) throw new Error(result.error || t('extractFailed'));
       if (result.data.persons.length === 0) {
         toast({ variant: 'destructive', title: t('nothingFound') });
@@ -252,7 +253,8 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
                           value={p.match}
                           disabled={!p.include}
                           onChange={(e) => updatePerson(p.key, { match: e.target.value })}
-                          className={cn(fieldClass, 'min-w-0 flex-1')}
+                          // Its own line on narrow screens, the rest of the row on wider ones
+                          className={cn(fieldClass, 'min-w-0 basis-full sm:basis-auto sm:flex-1')}
                         >
                           <option value="new">{t('matchNew')}</option>
                           {sortedPersons.map((existing) => (
@@ -266,7 +268,7 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
                       </div>
 
                       {isNew && (
-                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                           <Input
                             aria-label={t('courtesyName')}
                             placeholder={t('courtesyName')}
@@ -284,8 +286,8 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
                             className="h-9"
                           />
                           {(['birth', 'death'] as const).map((which) => (
-                            <div key={which} className="flex items-center gap-1">
-                              <span className="shrink-0 text-xs text-muted-foreground">
+                            <div key={which} className="flex min-w-0 items-center gap-1">
+                              <span className="w-16 shrink-0 text-xs text-muted-foreground">
                                 {t(which === 'birth' ? 'birthDate' : 'deathDate')}
                               </span>
                               {(['Year', 'Month', 'Day'] as const).map((part) => {
@@ -300,7 +302,12 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
                                     value={p[field] ?? ''}
                                     disabled={!editable}
                                     onChange={(e) => updatePerson(p.key, { [field]: numberValue(e.target.value) })}
-                                    className={cn(fieldClass, part === 'Year' ? 'w-16' : 'w-11', 'px-1.5 tabular-nums')}
+                                    className={cn(
+                                      fieldClass,
+                                      // The boxes share the cell's width, the year a little more
+                                      part === 'Year' ? 'flex-[1.6]' : 'flex-1',
+                                      'w-0 min-w-0 px-1.5 tabular-nums'
+                                    )}
                                   />
                                 );
                               })}

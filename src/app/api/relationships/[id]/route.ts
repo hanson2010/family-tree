@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, getEntity, saveEntity, deleteEntity, queryEntitiesByProperty } from '@/lib/firestore';
+import { KINDS, getEntity, saveEntity, deleteEntity, queryEntities, queryEntitiesByProperty } from '@/lib/firestore';
 import type { Relationship, ApiResponse, Person } from '@/types';
-import { relationshipSchema, RelationshipType, Gender } from '@/types';
+import { relationshipSchema } from '@/types';
+import { ORDERED_MARRIAGE_TYPES, shouldSwapPartners } from '@/lib/relationship-direction';
 
 // GET /api/relationships/[id] - Get a single relationship
 // Anonymous users can only access relationships between public persons
@@ -94,24 +95,33 @@ export async function PUT(
 
     const data = validationResult.data;
 
-    // For SPOUSE relationships, normalize the order: female as A, male as B
+    // Spouse and concubine are stored with the woman as person A, also after a change of type
     let personAId = data.personAId;
     let personBId = data.personBId;
-
-    if (data.type === RelationshipType.SPOUSE) {
-      const personA = await getEntity<Person>(KINDS.PERSON, data.personAId);
-      const personB = await getEntity<Person>(KINDS.PERSON, data.personBId);
-
-      if (personA && personB) {
-        // Normalize: female as A, male as B
-        if (personB.gender === Gender.FEMALE && personA.gender !== Gender.FEMALE) {
-          personAId = data.personBId;
-          personBId = data.personAId;
-        } else if (personA.gender === Gender.MALE && personB.gender !== Gender.MALE) {
-          personAId = data.personBId;
-          personBId = data.personAId;
-        }
+    if (ORDERED_MARRIAGE_TYPES.includes(data.type)) {
+      const [personA, personB] = await Promise.all([
+        getEntity<Person>(KINDS.PERSON, data.personAId),
+        getEntity<Person>(KINDS.PERSON, data.personBId),
+      ]);
+      if (shouldSwapPartners(data.type, personA?.gender, personB?.gender)) {
+        [personAId, personBId] = [personBId, personAId];
       }
+    }
+
+    // A changed type must not duplicate another relationship between the same two persons
+    const between = async (a: string, b: string) =>
+      queryEntities<Relationship>(KINDS.RELATIONSHIP, [
+        { property: 'personAId', operator: '==', value: a },
+        { property: 'personBId', operator: '==', value: b },
+      ]);
+    const duplicate = [...(await between(personAId, personBId)), ...(await between(personBId, personAId))].find(
+      (r) => r.id !== id && r.type === data.type
+    );
+    if (duplicate) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: 'These two persons already have this relationship.' },
+        { status: 409 }
+      );
     }
 
     const updatedRelationship: Relationship = {

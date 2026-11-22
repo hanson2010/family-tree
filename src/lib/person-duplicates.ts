@@ -1,22 +1,26 @@
-import { KINDS, queryEntitiesByProperty } from '@/lib/firestore';
+import { KINDS, queryEntities } from '@/lib/firestore';
+import { isSamePerson, type Identity } from '@/lib/person-identity';
 import type { Person } from '@/types';
 
 /**
- * An existing person with the same name and birth date that `userId` can see. Another user's
- * private person does not count: the user cannot see it, so they may create their own.
+ * The existing person that `person` duplicates, among those `userId` can see: public persons and
+ * the user's own. Persons with ids in `excludeIds` (the one being edited or merged) do not count.
+ * Another user's private person does not count: the user cannot see it.
  */
 export async function findVisibleDuplicate(
-  person: Pick<Person, 'name' | 'birthYear' | 'birthMonth' | 'birthDay'>,
-  userId: string
+  person: Identity,
+  userId: string,
+  excludeIds: string[] = []
 ): Promise<Person | null> {
-  const sameName = await queryEntitiesByProperty<Person>(KINDS.PERSON, 'name', person.name);
+  const persons = await queryEntities<Person>(KINDS.PERSON);
   return (
-    sameName.find(
-      (p) =>
-        (p.birthYear ?? null) === (person.birthYear ?? null) &&
-        (p.birthMonth ?? null) === (person.birthMonth ?? null) &&
-        (p.birthDay ?? null) === (person.birthDay ?? null) &&
-        (!p.isPrivate || p.createdBy === userId)
+    persons.find(
+      (p) => !excludeIds.includes(p.id) && (!p.isPrivate || p.createdBy === userId) && isSamePerson(person, p)
     ) ?? null
   );
+}
+
+/** "贾政 (1690)" or "王氏" for messages */
+export function describe(p: Pick<Person, 'name' | 'birthYear'>): string {
+  return p.birthYear != null ? `${p.name} (${p.birthYear})` : p.name;
 }

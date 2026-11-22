@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
+import { GEMINI_ISSUE_KEYS } from '@/lib/i18n';
+import type { GeminiIssue } from '@/types';
 import type { ApiResponse, AvatarUploadResponse, Person, PersonFormData } from '@/types';
 
 const fieldClass =
@@ -27,6 +29,8 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
 
   const [faces, setFaces] = useState<string[]>([]);
   const [detected, setDetected] = useState(true);
+  // Why faces could not be looked for, when Gemini failed
+  const [issue, setIssue] = useState<GeminiIssue | null>(null);
   // Person id chosen for each face; '' means the face is not used
   const [assigned, setAssigned] = useState<string[]>([]);
   const [isWorking, setIsWorking] = useState(false);
@@ -36,6 +40,7 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
     setFaces([]);
     setAssigned([]);
     setDetected(true);
+    setIssue(null);
     setKeepUnused(true);
   };
 
@@ -55,6 +60,7 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
       if (!result.success) throw new Error(result.error || t('avatarUploadFailed'));
       setFaces(result.avatars);
       setDetected(result.detected);
+      setIssue(result.geminiIssue ?? null);
       setAssigned(result.avatars.map(() => ''));
     } catch (error) {
       toast({
@@ -166,7 +172,13 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
 
         {faces.length > 0 && (
           <>
-            {!detected && <p className="text-sm text-muted-foreground">{t('noFaceFound')}</p>}
+            {issue ? (
+              <p className="text-sm text-destructive">
+                {t('facesNotDetected')}: {t(GEMINI_ISSUE_KEYS[issue])}
+              </p>
+            ) : (
+              !detected && <p className="text-sm text-muted-foreground">{t('noFaceFound')}</p>
+            )}
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {faces.map((face, i) => (
                 <li key={i} className="flex flex-col items-center gap-2 rounded-lg border bg-background p-3">

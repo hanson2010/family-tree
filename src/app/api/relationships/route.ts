@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { KINDS, queryEntities, queryEntitiesByProperty, saveEntity, getEntity } from '@/lib/firestore';
 import type { Relationship, ApiResponse, Person } from '@/types';
-import { relationshipSchema, RelationshipType, Gender } from '@/types';
+import { relationshipSchema } from '@/types';
+import { ORDERED_MARRIAGE_TYPES, shouldSwapPartners } from '@/lib/relationship-direction';
 import { v4 as uuidv4 } from 'uuid';
 
 // GET /api/relationships - List all relationships
@@ -77,25 +78,16 @@ export async function POST(request: NextRequest) {
     const data = validationResult.data;
     const now = new Date();
 
-    // For SPOUSE relationships, normalize the order: female as A, male as B
+    // Spouse and concubine are stored with the woman as person A
     let personAId = data.personAId;
     let personBId = data.personBId;
-
-    if (data.type === RelationshipType.SPOUSE) {
-      // Fetch both persons to determine their genders
-      const personA = await getEntity<Person>(KINDS.PERSON, data.personAId);
-      const personB = await getEntity<Person>(KINDS.PERSON, data.personBId);
-
-      if (personA && personB) {
-        // Normalize: female as A, male as B
-        // If both have same gender or unknown, keep original order
-        if (personB.gender === Gender.FEMALE && personA.gender !== Gender.FEMALE) {
-          personAId = data.personBId;
-          personBId = data.personAId;
-        } else if (personA.gender === Gender.MALE && personB.gender !== Gender.MALE) {
-          personAId = data.personBId;
-          personBId = data.personAId;
-        }
+    if (ORDERED_MARRIAGE_TYPES.includes(data.type)) {
+      const [personA, personB] = await Promise.all([
+        getEntity<Person>(KINDS.PERSON, data.personAId),
+        getEntity<Person>(KINDS.PERSON, data.personBId),
+      ]);
+      if (shouldSwapPartners(data.type, personA?.gender, personB?.gender)) {
+        [personAId, personBId] = [personBId, personAId];
       }
     }
 

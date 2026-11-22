@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { z } from 'zod';
-import { generateJson, imagePart } from '@/lib/gemini';
+import { GeminiCallError, generateJson, imagePart } from '@/lib/gemini';
+import type { GeminiIssue } from '@/types';
 
 /** Longest side of the copy sent to Gemini and cropped from */
 const WORKING_SIZE = 1600;
@@ -114,18 +115,22 @@ export async function normalizeAvatar(dataUrl: string): Promise<string> {
  * Square avatars of every face in a photo, left to right. When Gemini finds no face or
  * cannot be reached, the result is one square from the middle of the photo.
  */
-export async function avatarsFromPhoto(file: Buffer): Promise<{ avatars: string[]; detected: boolean }> {
+export async function avatarsFromPhoto(
+  file: Buffer
+): Promise<{ avatars: string[]; detected: boolean; geminiIssue?: GeminiIssue }> {
   const { data, width, height } = await workingCopy(file);
   let boxes: Box[] = [];
+  let issue: GeminiIssue | undefined;
   try {
     boxes = await detectFaces(data, width, height);
   } catch (error) {
     console.warn('Face detection failed, using the middle of the photo:', error);
+    issue = error instanceof GeminiCallError ? error.issue : 'failed';
   }
   if (boxes.length === 0) {
     const side = Math.min(width, height);
     const middle = { left: (width - side) / 2, top: (height - side) / 2, width: side, height: side };
-    return { avatars: [await cropAvatar(data, middle)], detected: false };
+    return { avatars: [await cropAvatar(data, middle)], detected: false, geminiIssue: issue };
   }
   const avatars = await Promise.all(boxes.map((box) => cropAvatar(data, squareAround(box, width, height))));
   return { avatars, detected: true };

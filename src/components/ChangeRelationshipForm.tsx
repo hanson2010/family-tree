@@ -47,6 +47,13 @@ const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
   [RelType.SWORN_SIBLING]: '结拜兄弟姐妹',
 };
 
+// Types a relationship can be changed to: the same kind, so its two persons and direction stay valid
+const TYPE_FAMILIES: RelationshipType[][] = [
+  [RelType.SPOUSE, RelType.CONCUBINE, RelType.BETROTHED],
+  [RelType.PARENT_CHILD, RelType.ADOPTIVE_PARENT, RelType.FOSTER_PARENT],
+  [RelType.SIBLING, RelType.HALF_SIBLING, RelType.SWORN_SIBLING],
+];
+
 // Person autocomplete input component
 interface PersonAutocompleteProps {
   value: string;
@@ -130,6 +137,13 @@ function PersonAutocomplete({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // The list opens on a click, typing or ↓, not on focus, so it does not cover a dialog that
+    // has just opened with this box focused
+    if (!showSuggestions && e.key === 'ArrowDown') {
+      e.preventDefault();
+      setShowSuggestions(true);
+      return;
+    }
     if (!showSuggestions || filteredPersons.length === 0) {
       if (e.key === 'Escape') {
         setShowSuggestions(false);
@@ -176,7 +190,7 @@ function PersonAutocomplete({
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          onFocus={() => setShowSuggestions(true)}
+          onClick={() => setShowSuggestions(true)}
           autoComplete="off"
         />
         {showSuggestions && filteredPersons.length > 0 && (
@@ -233,6 +247,7 @@ export function ChangeRelationshipForm({
   const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null);
 
   // Edit form state
+  const [editType, setEditType] = useState<RelationshipType | null>(null);
   const [editStartYear, setEditStartYear] = useState<number | null>(null);
   const [editStartMonth, setEditStartMonth] = useState<number | null>(null);
   const [editStartDay, setEditStartDay] = useState<number | null>(null);
@@ -296,6 +311,7 @@ export function ChangeRelationshipForm({
     if (editingRelationshipId) {
       const rel = relationships.find(r => r.id === editingRelationshipId);
       if (rel) {
+        setEditType(rel.type);
         setEditStartYear(rel.startYear || null);
         setEditStartMonth(rel.startMonth || null);
         setEditStartDay(rel.startDay || null);
@@ -337,7 +353,7 @@ export function ChangeRelationshipForm({
       const data: RelationshipFormData = {
         personAId: rel.personAId,
         personBId: rel.personBId,
-        type: rel.type,
+        type: editType ?? rel.type,
         startYear: editStartYear,
         startMonth: editStartMonth,
         startDay: editStartDay,
@@ -431,7 +447,24 @@ export function ChangeRelationshipForm({
                   <>
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <AlertTriangle className="h-4 w-4 text-amber-500" />
-                      {t('editRelationshipDates')}
+                      {t('editRelationship')}
+                    </div>
+
+                    {/* Type: within the same kind, so the two persons and direction stay valid */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">{t('relationshipType')}</Label>
+                      <Select value={editType ?? rel.type} onValueChange={(value) => setEditType(value as RelationshipType)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(TYPE_FAMILIES.find((family) => family.includes(rel.type)) ?? [rel.type]).map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {RELATIONSHIP_LABELS[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {/* Start Date */}
@@ -512,7 +545,7 @@ export function ChangeRelationshipForm({
                         ) : (
                           <>
                             <Edit className="w-4 h-4 mr-2" />
-                            {t('updateDates')}
+                            {t('save')}
                           </>
                         )}
                       </Button>

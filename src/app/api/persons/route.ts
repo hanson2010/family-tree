@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { KINDS, queryEntities } from '@/lib/firestore';
-import { findVisibleDuplicate } from '@/lib/person-duplicates';
+import { describe, findVisibleDuplicate } from '@/lib/person-duplicates';
 import { findOwnSavedAvatar, personRequestSchema, savePerson } from '@/lib/person-save';
 import type { Person, ApiResponse } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -58,13 +58,12 @@ export async function POST(request: NextRequest) {
     const data = validationResult.data;
     const userId = session.user.id;
 
-    if (await findVisibleDuplicate(data, userId)) {
+    // A public person must not duplicate one already in the tree
+    const duplicate = data.isPrivate ? null : await findVisibleDuplicate(data, userId);
+    if (duplicate) {
       return NextResponse.json<ApiResponse<never>>(
-        {
-          success: false,
-          error: 'A person with this name and birthday already exists. Please check if this is the same person.',
-        },
-        { status: 409 } // Conflict status code
+        { success: false, error: `Already in the tree: ${describe(duplicate)}. This looks like the same person.` },
+        { status: 409 }
       );
     }
 

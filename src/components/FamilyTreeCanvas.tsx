@@ -7,7 +7,8 @@ import { Maximize2, Minus, Plus } from 'lucide-react';
 import type { Person, Relationship, GraphNode } from '@/types';
 import { Gender as GenderEnum, RelationshipType } from '@/types';
 import { getChineseRelationshipLabel } from '@/lib/chinese-kinship';
-import { DEFAULT_LAYOUT_OPTIONS, PARENTAL_TYPES, layoutFamilyTree } from '@/lib/tree-layout';
+import { DEFAULT_LAYOUT_OPTIONS, PARENTAL_TYPES, PARTNER_TYPES, layoutFamilyTree } from '@/lib/tree-layout';
+import { marriageOrdinals } from '@/lib/marriage-order';
 import { useLocale } from '@/components/LocaleProvider';
 
 interface FamilyTreeCanvasProps {
@@ -76,6 +77,9 @@ const MOVE_DURATION = 600;
 /** Persons shown only to connect a filtered tree */
 const CONNECTOR_OPACITY = 0.5;
 const CONNECTOR_RING = '#6B645B';
+const LINK_OPACITY = 0.85;
+/** Lines of other persons while one person is hovered */
+const FADED_LINK_OPACITY = 0.12;
 
 // Generation range to display: ancestors (negative) to descendants (positive)
 const GENERATION_MIN = -3;
@@ -85,6 +89,8 @@ const GENERATION_MAX = 3;
 interface TreeLink {
   id: string;
   type: RelationshipType;
+  /** The persons this line belongs to, for highlighting */
+  personIds: string[];
   path: () => string;
 }
 
@@ -167,26 +173,84 @@ function findConnectedPersons(centerId: string, persons: Person[], relationships
  * One line per relationship, from person to person: an S-curve from parent to child, a straight
  * line otherwise. Two persons in the same row with someone between them get an arch over them.
  */
-function treeLinks(relationships: Relationship[], at: (id: string) => { x: number; y: number }): TreeLink[] {
+function treeLinks(
+  relationships: Relationship[],
+  at: (id: string) => { x: number; y: number },
+  genderOf: (id: string) => GenderEnum | undefined
+): TreeLink[] {
   const { nodeSpacing } = DEFAULT_LAYOUT_OPTIONS;
-  return relationships.map((rel) => ({
-    id: rel.id,
-    type: rel.type,
-    path: () => {
-      const a = at(rel.personAId);
-      const b = at(rel.personBId);
-      if (PARENTAL_TYPES.includes(rel.type)) {
-        const midY = (a.y + b.y) / 2;
-        return `M${a.x},${a.y}C${a.x},${midY} ${b.x},${midY} ${b.x},${b.y}`;
-      }
-      const [left, right] = a.x <= b.x ? [a, b] : [b, a];
-      if (Math.abs(a.y - b.y) < 1 && right.x - left.x >= 2 * nodeSpacing - 1) {
-        const rise = 12 + Math.min(10, (right.x - left.x) * 0.03);
-        return `M${left.x},${left.y - NODE_RADIUS}Q${(left.x + right.x) / 2},${left.y - NODE_RADIUS - 2 * rise} ${right.x},${right.y - NODE_RADIUS}`;
-      }
-      return `M${a.x},${a.y}L${b.x},${b.y}`;
-    },
-  }));
+  type Point = { x: number; y: number };
+  const sideBySide = (a: Point, b: Point) => Math.abs(a.y - b.y) < 1 && Math.abs(a.x - b.x) < 2 * nodeSpacing - 1;
+  const curve = (from: Point, to: Point) => {
+    const midY = (from.y + to.y) / 2;
+    return `M${from.x},${from.y}C${from.x},${midY} ${to.x},${midY} ${to.x},${to.y}`;
+  };
+  const arePartners = (a: string, b: string) =>
+    relationships.some(
+      (r) =>
+        PARTNER_TYPES.includes(r.type) &&
+        ((r.personAId === a && r.personBId === b) || (r.personAId === b && r.personBId === a))
+    );
+  const links: TreeLink[] = [];
+
+  // Parent and child: one curve per child from a couple, from the middle of their marriage line
+  // when they sit side by side, else from the mother (a wife may sit between them); otherwise one
+  // curve from each parent
+  const parentLinks = new Map<string, Relationship[]>();
+  relationships
+    .filter((r) => PARENTAL_TYPES.includes(r.type))
+    .forEach((r) => parentLinks.set(r.personBId, [...(parentLinks.get(r.personBId) ?? []), r]));
+  parentLinks.forEach((rels, childId) => {
+    const parents = [...new Set(rels.map((r) => r.personAId))];
+    if (parents.length === 2 && arePartners(parents[0], parents[1])) {
+      const [p, q] = parents;
+      const mother = parents.find((id) => genderOf(id) === GenderEnum.FEMALE) ?? q;
+      links.push({
+        id: `couple-${childId}`,
+        type: rels.every((r) => r.type === rels[0].type) ? rels[0].type : RelationshipType.PARENT_CHILD,
+        personIds: [p, q, childId],
+        path: () => {
+          const a = at(p);
+          const b = at(q);
+          const start = sideBySide(a, b) ? { x: (a.x + b.x) / 2, y: a.y } : at(mother);
+          return curve(start, at(childId));
+        },
+      });
+    } else {
+      rels.forEach((r) =>
+        links.push({
+          id: r.id,
+          type: r.type,
+          personIds: [r.personAId, r.personBId],
+          path: () => curve(at(r.personAId), at(r.personBId)),
+        })
+      );
+    }
+  });
+
+  // Other relationships join the two persons; over persons in between, an arch whose height grows
+  // with how many it passes, so arches from one person fan out
+  relationships
+    .filter((r) => !PARENTAL_TYPES.includes(r.type))
+    .forEach((rel) =>
+      links.push({
+        id: rel.id,
+        type: rel.type,
+        personIds: [rel.personAId, rel.personBId],
+        path: () => {
+          const a = at(rel.personAId);
+          const b = at(rel.personBId);
+          const [left, right] = a.x <= b.x ? [a, b] : [b, a];
+          if (Math.abs(a.y - b.y) < 1 && !sideBySide(a, b)) {
+            const between = Math.max(1, Math.round((right.x - left.x) / nodeSpacing) - 1);
+            const rise = Math.min(46, 12 + 11 * (between - 1));
+            return `M${left.x},${left.y - NODE_RADIUS}Q${(left.x + right.x) / 2},${left.y - NODE_RADIUS - 2 * rise} ${right.x},${right.y - NODE_RADIUS}`;
+          }
+          return `M${a.x},${a.y}L${b.x},${b.y}`;
+        },
+      })
+    );
+  return links;
 }
 
 export function FamilyTreeCanvas({
@@ -210,6 +274,7 @@ export function FamilyTreeCanvas({
 
   const [isEmpty, setIsEmpty] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [hasMarriageOrder, setHasMarriageOrder] = useState(false);
 
   const kinshipPersons = allPersons ?? persons;
   const selfLabel = t('self');
@@ -326,7 +391,7 @@ export function FamilyTreeCanvas({
       const n = nodeById.get(id)!;
       return { x: n.x ?? 0, y: n.y ?? 0 };
     };
-    const links = treeLinks(visibleRelationships, at);
+    const links = treeLinks(visibleRelationships, at, (id) => nodeById.get(id)?.gender);
 
     const g = svg.append('g');
     const defs = svg.append('defs');
@@ -345,7 +410,7 @@ export function FamilyTreeCanvas({
       .attr('stroke', (d) => linkStyle(d.type).stroke)
       .attr('stroke-width', (d) => linkStyle(d.type).width)
       .attr('stroke-dasharray', (d) => linkStyle(d.type).dash)
-      .attr('stroke-opacity', 0.85);
+      .attr('stroke-opacity', LINK_OPACITY);
 
     // Nodes
     const node = g
@@ -477,17 +542,80 @@ export function FamilyTreeCanvas({
       const rect = containerRef.current?.getBoundingClientRect();
       return { x: event.clientX - (rect?.left ?? 0) + 14, y: event.clientY - (rect?.top ?? 0) - 12 };
     };
+    // While a person is hovered, their own lines stay strong and the rest fade
+    const linkById = new Map(links.map((l) => [l.id, l]));
+    const highlight = (personId: string | null) => {
+      const isTheirs = (l: TreeLink) => !personId || l.personIds.includes(personId);
+      link.attr('stroke-opacity', (l) => (isTheirs(l) ? LINK_OPACITY : FADED_LINK_OPACITY));
+      badge.attr('opacity', (b) => (isTheirs(linkById.get(b.linkId)!) ? 1 : FADED_LINK_OPACITY));
+    };
+
     node
       .on('mouseenter', (event: MouseEvent, d) => {
         setTooltip({ ...tooltipPosition(event), name: d.name, years: lifeYears(d), kinship: d.kinship ?? '' });
+        highlight(d.id);
       })
       .on('mousemove', (event: MouseEvent) => {
         setTooltip((prev) => (prev ? { ...prev, ...tooltipPosition(event) } : prev));
       })
-      .on('mouseleave', () => setTooltip(null));
+      .on('mouseleave', () => {
+        setTooltip(null);
+        highlight(null);
+      });
+
+    // Marriage order: a numbered badge on each marriage line, near the end of the partner whose
+    // marriages it counts (by start date, for persons married more than once)
+    const ordinals = marriageOrdinals(relationships);
+    const pathById = new Map<string, SVGPathElement>();
+    link.each(function (d) {
+      pathById.set(d.id, this as SVGPathElement);
+    });
+    const badges = links.flatMap((l) =>
+      (ordinals.get(l.id) ?? []).filter((o) => nodeById.has(o.personId)).map((o) => ({ ...o, linkId: l.id, type: l.type }))
+    );
+    const badge = g
+      .append('g')
+      .attr('pointer-events', 'none')
+      .selectAll('g')
+      .data(badges)
+      .enter()
+      .append('g');
+    badge
+      .append('circle')
+      .attr('r', 7.5)
+      .attr('fill', '#FFFFFF')
+      .attr('stroke', (d) => linkStyle(d.type).stroke)
+      .attr('stroke-width', 1.2);
+    badge
+      .append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('font-size', '10px')
+      .attr('font-weight', '700')
+      .attr('fill', (d) => linkStyle(d.type).stroke)
+      .text((d) => d.ordinal);
+    setHasMarriageOrder(badges.length > 0);
+
+    const placeBadges = () =>
+      badge.attr('transform', (d) => {
+        const path = pathById.get(d.linkId)!;
+        const length = path.getTotalLength();
+        const who = at(d.personId);
+        const start = path.getPointAtLength(0);
+        const end = path.getPointAtLength(length);
+        const distance = (p: DOMPoint) => Math.hypot(p.x - who.x, p.y - who.y);
+        const fromStart = distance(start) <= distance(end);
+        // A third of the way along, where lines from the same person have spread apart, and at
+        // least clear of the person's circle (lines start at its edge or at its centre)
+        const clear = Math.max(0, NODE_RADIUS + 11 - distance(fromStart ? start : end));
+        const along = Math.min(length * 0.45, Math.max(clear, length * 0.3));
+        const point = path.getPointAtLength(fromStart ? along : length - along);
+        return `translate(${point.x}, ${point.y})`;
+      });
 
     const render = () => {
       link.attr('d', (d) => d.path());
+      placeBadges();
       node.attr('transform', (d) => `translate(${d.x ?? 0}, ${d.y ?? 0})`);
       nodes.forEach((n) => saved.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 }));
     };
@@ -580,6 +708,17 @@ export function FamilyTreeCanvas({
               </div>
             );
           })}
+          {hasMarriageOrder && (
+            <div className="flex items-center gap-2">
+              <svg width="12" height="12" aria-hidden="true">
+                <circle cx="6" cy="6" r="5.5" fill="#FFFFFF" stroke={BRAND} strokeWidth="1" />
+                <text x="6" y="6.5" textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="700" fill={BRAND}>
+                  1
+                </text>
+              </svg>
+              <span>{t('marriageOrder')}</span>
+            </div>
+          )}
           {connectorIds && connectorIds.size > 0 && (
             <div className="flex items-center gap-2">
               <svg width="12" height="12" aria-hidden="true">

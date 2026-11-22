@@ -39,6 +39,29 @@ describe('findExistingMatch', () => {
   it('does not guess between several persons with the same name', () => {
     expect(findExistingMatch(extracted('p1', '贾政'), [existing('a', '贾政'), existing('b', '贾政')])).toBeNull();
   });
+
+  it('matches a name against an existing courtesy or art name', () => {
+    const zhongzheng = { ...existing('z', '蒋中正', 1887), courtesyName: '介石' };
+    expect(findExistingMatch(extracted('p1', '蒋介石'), [zhongzheng])?.id).toBe('z');
+    const baoyu = { ...existing('b', '贾宝玉'), artName: '怡红公子' };
+    expect(findExistingMatch(extracted('p1', '怡红公子'), [baoyu])?.id).toBe('b');
+  });
+
+  it('matches an existing name against the found courtesy name', () => {
+    const found = { ...extracted('p1', '蒋中正'), courtesyName: '介石' };
+    expect(findExistingMatch(found, [existing('j', '介石')])?.id).toBe('j');
+  });
+
+  it('prefers the same name to a courtesy-name match', () => {
+    const sameName = existing('a', '介石');
+    const byCourtesy = { ...existing('b', '蒋中正'), courtesyName: '介石' };
+    expect(findExistingMatch(extracted('p1', '介石'), [byCourtesy, sameName])?.id).toBe('a');
+  });
+
+  it('needs the birth year to agree for a courtesy-name match too', () => {
+    const zhongzheng = { ...existing('z', '蒋中正', 1887), courtesyName: '介石' };
+    expect(findExistingMatch(extracted('p1', '蒋介石', 1950), [zhongzheng])).toBeNull();
+  });
 });
 
 describe('buildCommit', () => {

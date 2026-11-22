@@ -113,6 +113,13 @@ export function PersonAutocomplete({
       restore();
       return;
     }
+    // The list opens on a click, typing or ↓, not on focus, so it does not cover a dialog that
+    // has just opened with this box focused
+    if (!showSuggestions && e.key === 'ArrowDown') {
+      e.preventDefault();
+      setShowSuggestions(true);
+      return;
+    }
     if (!showSuggestions || suggestions.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -140,7 +147,7 @@ export function PersonAutocomplete({
             setShowSuggestions(true);
           }}
           onKeyDown={handleKeyDown}
-          onFocus={() => setShowSuggestions(true)}
+          onClick={() => setShowSuggestions(true)}
           autoComplete="off"
         />
         {showSuggestions && suggestions.length > 0 && (
