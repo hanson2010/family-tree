@@ -6,7 +6,7 @@ import { BrandMark } from '@/components/BrandMark';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { Languages, LogOut, PanelLeft } from 'lucide-react';
+import { KeyRound, Languages, LogOut, PanelLeft } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { Locale } from '@/lib/i18n';
@@ -81,6 +81,11 @@ export function Header({ onOpenMenu }: HeaderProps) {
                 {session.user?.name}
               </span>
             </div>
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" asChild>
+              <Link href="/tokens" title={t('apiTokens')} aria-label={t('apiTokens')}>
+                <KeyRound className="h-4 w-4" />
+              </Link>
+            </Button>
             <Button
               variant="ghost"
               size="icon"

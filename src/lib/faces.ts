@@ -3,27 +3,34 @@ import { z } from 'zod';
 import { GeminiCallError, generateJson, imagePart } from '@/lib/gemini';
 import type { GeminiIssue } from '@/types';
 
-/** Longest side of the copy sent to Gemini and cropped from */
-const WORKING_SIZE = 1600;
+/**
+ * Longest side of the copy sent to Gemini and cropped from: large enough for the faces in a group
+ * photo, small enough to keep each photo to one inexpensive call
+ */
+const WORKING_SIZE = 2048;
 const AVATAR_SIZE = 256;
-/** A crop is this many times the face box, to include hair and chin */
+/** A crop is up to this many times the face box, to include hair and chin */
 const FACE_MARGIN = 1.7;
-const MAX_FACES = 30;
+const MAX_FACES = 60;
 
-interface Box {
+export interface Box {
   left: number;
   top: number;
   width: number;
   height: number;
 }
 
-const FACES_PROMPT = `Find every human face in this photo, including small, partly turned and partly
-hidden faces, and faces in paintings or old photographs. Give each face's bounding box as box_2d:
-[ymin, xmin, ymax, xmax], each normalized to 0-1000. Return an empty list if there are no faces.`;
+const FACES_PROMPT = `This is a photo, often a group photo. First count the people whose faces can
+be seen, row by row: in front, behind and at the edges, including small, partly turned, partly
+hidden and blurred faces, children, and faces in paintings or old photographs. Then give one
+bounding box per face as box_2d: [ymin, xmin, ymax, xmax], each normalized to 0-1000, so that the
+number of boxes equals your count. Each box covers one face from the hairline to the chin and ear
+to ear, never more than one person. Return count 0 and an empty list if there are no faces.`;
 
 const facesSchema = {
   type: 'object',
   properties: {
+    count: { type: 'integer' },
     faces: {
       type: 'array',
       items: {
@@ -53,8 +60,16 @@ async function workingCopy(file: Buffer) {
   return { data, width: info.width, height: info.height };
 }
 
-async function detectFaces(image: Buffer, width: number, height: number): Promise<Box[]> {
-  const reply = facesReply.parse(await generateJson([{ text: FACES_PROMPT }, imagePart(image, 'image/jpeg')], facesSchema));
+/** Faces in one image, in that image's pixels */
+async function detectIn(image: Buffer, width: number, height: number): Promise<Box[]> {
+  const reply = facesReply.parse(
+    await generateJson(
+      [{ text: FACES_PROMPT }, imagePart(image, 'image/jpeg')],
+      facesSchema,
+      undefined,
+      process.env.GOOGLE_AI_FACES_MODEL
+    )
+  );
   return reply.faces
     .map(({ box_2d: [ymin, xmin, ymax, xmax] }) => ({
       left: (Math.min(xmin, xmax) / 1000) * width,
@@ -62,20 +77,55 @@ async function detectFaces(image: Buffer, width: number, height: number): Promis
       width: (Math.abs(xmax - xmin) / 1000) * width,
       height: (Math.abs(ymax - ymin) / 1000) * height,
     }))
-    .filter((b) => b.width >= 8 && b.height >= 8)
-    .sort((a, b) => a.left - b.left)
-    .slice(0, MAX_FACES);
+    .filter((b) => b.width >= 8 && b.height >= 8);
 }
 
-/** Largest square around the box center that stays inside the image */
-function squareAround(box: Box, width: number, height: number): Box {
-  const cx = box.left + box.width / 2;
-  // Faces sit slightly above the middle of a portrait
-  const cy = box.top + box.height * 0.45;
-  const side = Math.min(Math.max(box.width, box.height) * FACE_MARGIN, width, height);
-  const left = Math.min(Math.max(cx - side / 2, 0), width - side);
-  const top = Math.min(Math.max(cy - side / 2, 0), height - side);
-  return { left, top, width: side, height: side };
+/** Every face in the working copy, in one Gemini call, in reading order */
+async function detectFaces(image: Buffer, width: number, height: number): Promise<Box[]> {
+  return readingOrder(await detectIn(image, width, height)).slice(0, MAX_FACES);
+}
+
+/** Faces row by row, left to right; faces whose centres are within a face height share a row */
+export function readingOrder(faces: Box[]): Box[] {
+  if (faces.length === 0) return faces;
+  const heights = faces.map((f) => f.height).sort((a, b) => a - b);
+  const rowHeight = heights[Math.floor(heights.length / 2)];
+  const byCentre = [...faces].sort((a, b) => a.top + a.height / 2 - (b.top + b.height / 2));
+  const rows: Box[][] = [];
+  for (const face of byCentre) {
+    const centre = face.top + face.height / 2;
+    const row = rows[rows.length - 1];
+    const rowCentre = row && row[0].top + row[0].height / 2;
+    if (row && centre - rowCentre < rowHeight) row.push(face);
+    else rows.push([face]);
+  }
+  return rows.flatMap((row) => row.sort((a, b) => a.left - b.left));
+}
+
+/**
+ * A square crop around each face, inside the image: the face with a margin for hair and chin,
+ * made smaller where it would reach into another face, but never smaller than the face itself.
+ */
+export function cropSquares(boxes: Box[], width: number, height: number): Box[] {
+  return boxes.map((box, i) => {
+    const cx = box.left + box.width / 2;
+    // Faces sit slightly above the middle of a portrait
+    const cy = box.top + box.height * 0.45;
+    const face = Math.max(box.width, box.height);
+    let half = (face * FACE_MARGIN) / 2;
+    boxes.forEach((other, j) => {
+      if (j === i) return;
+      // A square of half-side h reaches into the other face when h exceeds the distance from the
+      // centre to that face on both axes
+      const dx = Math.max(other.left - cx, cx - (other.left + other.width), 0);
+      const dy = Math.max(other.top - cy, cy - (other.top + other.height), 0);
+      half = Math.min(half, Math.max(dx, dy));
+    });
+    const side = Math.min(Math.max(half * 2, face), width, height);
+    const left = Math.min(Math.max(cx - side / 2, 0), width - side);
+    const top = Math.min(Math.max(cy - side / 2, 0), height - side);
+    return { left, top, width: side, height: side };
+  });
 }
 
 async function cropAvatar(image: Buffer, square: Box): Promise<string> {
@@ -128,10 +178,28 @@ export async function avatarsFromPhoto(
     issue = error instanceof GeminiCallError ? error.issue : 'failed';
   }
   if (boxes.length === 0) {
-    const side = Math.min(width, height);
-    const middle = { left: (width - side) / 2, top: (height - side) / 2, width: side, height: side };
-    return { avatars: [await cropAvatar(data, middle)], detected: false, geminiIssue: issue };
+    return { avatars: [await cropAvatar(data, middleSquare(width, height))], detected: false, geminiIssue: issue };
   }
-  const avatars = await Promise.all(boxes.map((box) => cropAvatar(data, squareAround(box, width, height))));
+  const avatars = await Promise.all(cropSquares(boxes, width, height).map((square) => cropAvatar(data, square)));
   return { avatars, detected: true };
+}
+
+/** The largest square in the middle of an image */
+function middleSquare(width: number, height: number): Box {
+  const side = Math.min(width, height);
+  return { left: (width - side) / 2, top: (height - side) / 2, width: side, height: side };
+}
+
+/**
+ * A square avatar without looking for faces: the photo is scaled so its short edge is the avatar
+ * size, then the middle square of that size is cut out.
+ */
+export async function centeredAvatar(file: Buffer): Promise<string> {
+  const jpeg = await sharp(file)
+    .rotate()
+    .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover', position: 'centre' })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
 }

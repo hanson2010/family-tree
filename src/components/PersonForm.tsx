@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
-import { GEMINI_ISSUE_KEYS } from '@/lib/i18n';
 import type { ApiResponse, Person, PersonFormData, Gender, AvatarUploadResponse, SavedAvatar } from '@/types';
 import { Gender as GenderEnum } from '@/types';
 import { Upload, X, User, Loader2 } from 'lucide-react';
@@ -42,8 +41,6 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  // Faces found in an uploaded group photo, waiting for the user to pick one
-  const [faceChoices, setFaceChoices] = useState<string[]>([]);
   // Faces saved earlier from group photos; the chosen one is removed once the person is saved
   const [savedAvatars, setSavedAvatars] = useState<SavedAvatar[]>([]);
   const [chosenSavedId, setChosenSavedId] = useState<string | null>(null);
@@ -91,7 +88,6 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
 
   // Reset form when person changes
   React.useEffect(() => {
-    setFaceChoices([]);
     if (person) {
       setFormData({
         name: person.name || '',
@@ -143,15 +139,9 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
         body: uploadFormData,
       });
 
+      // The server crops the middle of the photo; faces are looked for only in group photos
       const result: AvatarUploadResponse = await response.json();
-      if (result.success && result.geminiIssue) {
-        toast({ title: t('facesNotDetected'), description: t(GEMINI_ISSUE_KEYS[result.geminiIssue]) });
-      }
-
-      if (result.success && result.avatars.length > 1) {
-        setFaceChoices(result.avatars);
-      } else if (result.success && result.avatars.length === 1) {
-        setFaceChoices([]);
+      if (result.success && result.avatars.length > 0) {
         setFormData(prev => ({ ...prev, avatar: result.avatars[0] }));
         toast({ title: t('avatarUploaded') });
       } else {
@@ -285,7 +275,7 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
             </div>
           </div>
 
-          {savedAvatars.length > 0 && faceChoices.length === 0 && (
+          {savedAvatars.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
                 {t('savedFaces')} ({savedAvatars.length})
@@ -317,29 +307,6 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
                       <X className="h-3 w-3" />
                     </button>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {faceChoices.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">{t('chooseFace')}</p>
-              <div className="flex flex-wrap gap-2">
-                {faceChoices.map((face, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    aria-label={`${t('chooseFace')} ${index + 1}`}
-                    onClick={() => {
-                      setFormData(prev => ({ ...prev, avatar: face }));
-                      setFaceChoices([]);
-                    }}
-                    className="h-14 w-14 overflow-hidden rounded-full border-2 border-transparent transition hover:border-primary focus-visible:border-primary focus-visible:outline-none"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={face} alt="" className="h-full w-full object-cover" />
-                  </button>
                 ))}
               </div>
             </div>

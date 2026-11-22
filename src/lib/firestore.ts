@@ -24,6 +24,8 @@ export const COLLECTIONS = {
   RELATIONSHIP: 'Relationship',
   /** Faces saved for later, not yet assigned to a person */
   AVATAR: 'Avatar',
+  /** Personal access tokens for the MCP endpoint; only a hash of each token is stored */
+  API_TOKEN: 'ApiToken',
 } as const;
 
 // Keep KINDS as an alias for backward compatibility

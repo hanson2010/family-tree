@@ -47,10 +47,16 @@ export class GeminiCallError extends Error {
  * Ask Gemini for a JSON answer shaped by `schema` (a JSON Schema). Throws a GeminiCallError
  * when the call fails or the reply is not JSON; callers validate the shape themselves.
  */
-export async function generateJson(parts: Part[], schema: object, systemInstruction?: string): Promise<unknown> {
+export async function generateJson(
+  parts: Part[],
+  schema: object,
+  systemInstruction?: string,
+  /** Overrides GOOGLE_AI_MODEL for this call */
+  model?: string
+): Promise<unknown> {
   try {
     const response = await gemini().models.generateContent({
-      model: process.env.GOOGLE_AI_MODEL || DEFAULT_GOOGLE_AI_MODEL,
+      model: model || process.env.GOOGLE_AI_MODEL || DEFAULT_GOOGLE_AI_MODEL,
       contents: [{ role: 'user', parts }],
       config: {
         systemInstruction,

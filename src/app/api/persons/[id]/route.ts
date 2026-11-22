@@ -1,193 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, getEntity, deleteEntity } from '@/lib/firestore';
-import { findOwnSavedAvatar, personRequestSchema, reorderMarriages, savePerson } from '@/lib/person-save';
-import { describe, findVisibleDuplicate } from '@/lib/person-duplicates';
-import type { Person, ApiResponse } from '@/types';
+import { deletePerson, getVisiblePerson, updatePerson } from '@/lib/family-service';
+import { errorResponse } from '@/lib/api-errors';
+import type { ApiResponse, Person } from '@/types';
 
-// GET /api/persons/[id] - Get a single person
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+type Params = { params: Promise<{ id: string }> };
+
+// GET /api/persons/[id] - One person, if the user can see them
+export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const session = await auth();
-    const userId = session?.user?.id;
     const { id } = await params;
-
-    const person = await getEntity<Person>(KINDS.PERSON, id);
-
-    if (!person) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Person not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check privacy
-    if (person.isPrivate && person.createdBy !== userId) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Person not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json<ApiResponse<Person>>({
-      success: true,
-      data: person,
-    });
+    return NextResponse.json<ApiResponse<Person>>({ success: true, data: await getVisiblePerson(id, session?.user?.id) });
   } catch (error) {
-    console.error('Error fetching person:', error);
-    return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: 'Failed to fetch person' },
-      { status: 500 }
-    );
+    return errorResponse(error, 'Failed to fetch person');
   }
 }
 
-// PUT /api/persons/[id] - Update a person
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// PUT /api/persons/[id] - Update one of the user's persons
+export async function PUT(request: NextRequest, { params }: Params) {
   try {
     const session = await auth();
     const { id } = await params;
-
-    if (!session?.user?.id) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const existingPerson = await getEntity<Person>(KINDS.PERSON, id);
-
-    if (!existingPerson) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Person not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check ownership
-    if (existingPerson.createdBy !== session.user.id) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
-
-    const body = await request.json();
-    const validationResult = personRequestSchema.safeParse(body);
-
-    if (!validationResult.success) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: validationResult.error.message },
-        { status: 400 }
-      );
-    }
-
-    const data = validationResult.data;
-
-    // A public person must not duplicate another one already in the tree
-    const duplicate = data.isPrivate ? null : await findVisibleDuplicate(data, session.user.id, [id]);
-    if (duplicate) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Already in the tree: ${describe(duplicate)}. This looks like the same person.` },
-        { status: 409 }
-      );
-    }
-
-    // A saved face is used as stored, not as sent by the browser
-    const savedAvatar = data.savedAvatarId ? await findOwnSavedAvatar(data.savedAvatarId, session.user.id) : null;
-    if (data.savedAvatarId && !savedAvatar) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'The saved face is no longer available.' },
-        { status: 409 }
-      );
-    }
-
-    const updatedPerson: Person = {
-      ...existingPerson,
-      name: data.name,
-      courtesyName: data.courtesyName,
-      artName: data.artName,
-      gender: data.gender,
-      birthYear: data.birthYear ?? null,
-      birthMonth: data.birthMonth ?? null,
-      birthDay: data.birthDay ?? null,
-      deathYear: data.deathYear ?? null,
-      deathMonth: data.deathMonth ?? null,
-      deathDay: data.deathDay ?? null,
-      avatar: savedAvatar?.image ?? data.avatar ?? null,
-      isPrivate: data.isPrivate,
-      updatedAt: new Date(),
-    };
-
-    await savePerson(updatedPerson, savedAvatar?.id);
-
-    // A changed gender can change which partner comes first in this person's marriages
-    if (updatedPerson.gender !== existingPerson.gender) {
-      await reorderMarriages(id, updatedPerson.gender);
-    }
-
-    return NextResponse.json<ApiResponse<Person>>({
-      success: true,
-      data: updatedPerson,
-    });
+    const person = await updatePerson(session?.user?.id, id, await request.json());
+    return NextResponse.json<ApiResponse<Person>>({ success: true, data: person });
   } catch (error) {
-    console.error('Error updating person:', error);
-    return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: 'Failed to update person' },
-      { status: 500 }
-    );
+    return errorResponse(error, 'Failed to update person');
   }
 }
 
-// DELETE /api/persons/[id] - Delete a person
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// DELETE /api/persons/[id] - Delete one of the user's persons and their relationships
+export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const session = await auth();
     const { id } = await params;
-
-    if (!session?.user?.id) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const existingPerson = await getEntity<Person>(KINDS.PERSON, id);
-
-    if (!existingPerson) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Person not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check ownership
-    if (existingPerson.createdBy !== session.user.id) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
-
-    await deleteEntity(KINDS.PERSON, id);
-
-    return NextResponse.json<ApiResponse<never>>({
-      success: true,
-    });
+    await deletePerson(session?.user?.id, id);
+    return NextResponse.json<ApiResponse<never>>({ success: true });
   } catch (error) {
-    console.error('Error deleting person:', error);
-    return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: 'Failed to delete person' },
-      { status: 500 }
-    );
+    return errorResponse(error, 'Failed to delete person');
   }
 }

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { avatarsFromPhoto } from '@/lib/faces';
+import { avatarsFromPhoto, centeredAvatar } from '@/lib/faces';
 import type { ApiResponse, AvatarUploadResponse } from '@/types';
 
 const MAX_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
-// POST /api/avatar - Square avatars of every face in an uploaded photo
+// POST /api/avatar - A square avatar from the middle of an uploaded photo, or with `mode=faces`
+// (group photos) one square avatar per face found by Gemini
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -14,7 +15,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<ApiResponse<never>>({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const file = (await request.formData()).get('file');
+    const form = await request.formData();
+    const file = form.get('file');
+    const findFaces = form.get('mode') === 'faces';
     if (!(file instanceof File)) {
       return NextResponse.json<ApiResponse<never>>({ success: false, error: 'No file provided' }, { status: 400 });
     }
@@ -31,7 +34,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { avatars, detected, geminiIssue } = await avatarsFromPhoto(Buffer.from(await file.arrayBuffer()));
+    const photo = Buffer.from(await file.arrayBuffer());
+    if (!findFaces) {
+      return NextResponse.json<AvatarUploadResponse>({ success: true, avatars: [await centeredAvatar(photo)], detected: false });
+    }
+    const { avatars, detected, geminiIssue } = await avatarsFromPhoto(photo);
     return NextResponse.json<AvatarUploadResponse>({ success: true, avatars, detected, geminiIssue });
   } catch (error) {
     console.error('Error processing avatar:', error);

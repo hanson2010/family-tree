@@ -4,19 +4,14 @@ A web app for building and viewing family trees, labelled with Chinese kinship t
 
 ## Features
 
-- Sign in with Google. Only a person's creator can edit or delete them.
-- Mark a person as private: visible only to their creator.
-- No duplicate public persons: adding, editing, merging or importing a public person is refused when it matches a public person or one of your own, meaning the name equals the other's name, 字 or 号 (alone or after the surname), and the birth dates do not differ. A missing birth year counts as matching, except for names that are only a surname and 氏 (王氏), which need the same known year. Private persons are not checked.
-- The tree is built around the selected person and shows 0–3 generations above and below, with generation numbers relative to that person.
-- Each generation is one row. A husband sits left of his partners (wife, then concubine, then betrothed), or right of them if that makes fewer parent–child lines cross; siblings run oldest to youngest, those without a birth year last; children sit under their parents.
-- Each person shows their Chinese kinship term relative to the selected person.
-- Marriage order: when a person has at least two marriages (spouse or concubine) with a start date, each of those lines shows a number (1, 2, …) near that person, in order of start date. Set the start date when adding or changing a relationship.
-- Relationship types: parent–child, sibling, half sibling, spouse, concubine, betrothed, adoptive parent, foster parent, sworn sibling.
-- Birth, death and relationship dates can include month and day (both optional).
-- One avatar per person, from a JPEG, PNG, GIF or WebP photo up to 10MB. Gemini finds the faces and each becomes a 256×256 JPEG; with several faces you choose one. Without a face found, the middle of the photo is used.
-- Avatars from a group photo: choose who each face is, from the persons you created in the current family tree (everyone connected to the selected person). Unused faces can be saved (up to 500 per user, visible only to you); the person form lists them to use for any person, including ones created later. A saved face is removed once used, or with its delete button. The photo itself is not stored.
-- In **Add Relationship** and **Add Family Relationships**, search covers name, courtesy name and art name. Suggestions list plausible persons first (gender, and a birth year fitting the other persons chosen: parent 15–60 years older than the child, mother 15–50, spouse within 20 years, concubine within 30), then persons without any relationship before others.
-- Import from text or scans: paste records such as a genealogy, or upload up to 6 page images or PDFs (each up to 10MB, 20MB in total). Gemini extracts persons and relationships; you review them before saving. A found person is linked by default to the one person in the tree with the same name, or else whose name, 字 or 号 (alone or after the surname, e.g. 蒋介石 for 蒋中正 字 介石) matches; birth years must not differ. The import is saved in one go, applies the same duplicate check as **Add Person**, and skips relationships that already exist.
+- Sign in with Google. You can change or delete only the persons and relationships you created; private persons are visible only to their creator.
+- The tree is built around the selected person and shows 0–3 generations above and below (default 3), one row per generation, with each person's Chinese kinship term relative to the selected person.
+- Relationship types: parent–child, sibling, half sibling, spouse, concubine, betrothed, adoptive parent, foster parent, sworn sibling. Birth, death and relationship dates may include month and day.
+- A person's marriages are numbered on the tree in order of start date when at least two of them have one.
+- Avatars from photos (JPEG, PNG, GIF or WebP, up to 10MB): a photo uploaded for one person is cropped to its middle square. For a group photo, Gemini finds the faces so you can give avatars to several persons, and unused faces can be saved for later.
+- Import from text or scans (up to 6 images or PDFs, 20MB in total): Gemini extracts persons and relationships, which you review before saving.
+- Duplicate public persons are refused: the same name, or a name matching another's 字 or 号, with birth dates that do not differ. Names such as 王氏 also need the same birth year.
+- AI agents can read and change the tree through MCP (see below).
 
 ## Run Locally
 
@@ -32,7 +27,7 @@ npm run dev                        # http://localhost:3000
 
 **OAuth:** in Google Cloud Console → APIs & Services → Credentials, create an OAuth client ID of type "Web application". Add the app's URL as an authorized JavaScript origin and `<NEXTAUTH_URL>/auth/callback` as a redirect URI, e.g. `http://localhost:3000` and `http://localhost:3000/auth/callback`.
 
-**Without a Gemini key:** an uploaded avatar is the middle of the photo, a group photo gives that one avatar, and importing from text or scans fails. Everything else works. When a Gemini call fails, the app names the cause: credits or billing used up, quota or rate limit, missing or invalid key, Gemini down, or Gemini unreachable.
+**Without a Gemini key:** a group photo gives one avatar from the middle of the photo, and importing from text or scans fails. Everything else works. When a Gemini call fails, the app names the cause: credits or billing used up, quota or rate limit, missing or invalid key, Gemini down, or Gemini unreachable.
 
 **Environment variables** already set in your shell or system (e.g. a user-level `GOOGLE_CLOUD_PROJECT`) take precedence over `.env.local`.
 
@@ -94,15 +89,23 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
 
 ## Usage
 
-- Sign in, then use **Add Person**, **Add Relationship**, **Import from text or scans** or **Avatars from a group photo** in the sidebar.
-- Click a person to select them. The view shows the whole tree, zoomed out no further than 9px text, and moves the selected person as close to the centre as the tree's edges allow; a tree too large at that size is shown in part. Double-click a person you created to edit them.
-- The gender and "living in year" filters keep the tree connected: matching persons are shown with the persons needed to connect them to the selected person, drawn grey and faded with a dashed ring. The selected person always stays. A person with no birth or death year matches the "living in year" filter.
-- **Merge with another person** (right panel, persons you created): choose a second person of your own and, for each detail that differs, which value to keep. Their relationships move to the selected person, duplicates and relationships between the two are deleted, and the second person is deleted, all in one step.
-- Lines: a child of a couple has one curve, from the middle of the couple's marriage line, or from the mother when someone sits between the couple; otherwise one curve from each parent. Marriage arches over other persons rise higher the more persons they pass. Point at a person to fade every line but theirs.
-- Drag the background to pan.
-- Scroll or use +/− to zoom. The third zoom button returns to the view described above.
-- On screens narrower than 1024px, the header button opens the search/actions panel and the bar at the bottom opens the details panel.
-- The browser remembers the last selected person.
+- Signed in, the sidebar offers **Add Person**, **Add Relationship**, **Add Family Relationships**, **Import from text or scans** and **Avatars from a group photo**.
+- Click a person to select them; double-click one you created to edit them. The right panel shows their details and relatives, and lets you change their relationships, merge another of your persons into them, or delete them with their relationships.
+- The gender and "living in year" filters keep the tree connected: persons needed to link the matches are shown faded with a dashed ring.
+- Point at a person to highlight their lines. Drag to pan, scroll or use +/− to zoom; the third zoom button returns to the full view.
+- On screens narrower than 1024px, the header button opens the sidebar and the bar at the bottom opens the details panel.
+
+## AI Agents (MCP)
+
+AI assistants can read and change the family tree through MCP at `<site URL>/api/mcp`, acting as you with the same rules as the website: they see public persons and yours, change only persons and relationships you created, and are refused duplicate public persons.
+
+1. Signed in, open **API tokens** (key icon in the header) and create a token. It is shown once; up to 10 per user. Revoking one stops it at once.
+2. Add the server to the client with the token as a Bearer header, e.g. for Claude Code:
+   ```bash
+   claude mcp add --transport http family-tree https://family-tree.pythoner.work/api/mcp --header "Authorization: Bearer <token>"
+   ```
+
+Tools: `search_persons`, `get_person`, `create_person`, `update_person`, `delete_person`, `create_relationship`, `update_relationship`, `delete_relationship`. Avatar images are not returned.
 
 ## Open Items
 
@@ -112,8 +115,6 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
 | Export | Not built |
 | Avatars uploaded before face cropping | Stored as the original photos |
 | Relationship-type and branch filters | Not built |
-| Relationship list for signed-in users includes relationships of other users' private persons | Open privacy gap; the API should filter them like persons |
-| Deleting a person leaves their relationships | Open; should delete or block |
 | Relationship dialogs: layout redesign and remaining hard-coded Chinese texts | Not done |
 | Dark theme | Tokens exist; no toggle |
 | Zustand store (`src/store/index.ts`) | Unused; state lives in the page |

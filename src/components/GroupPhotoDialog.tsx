@@ -55,6 +55,7 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
     try {
       const form = new FormData();
       form.append('file', file);
+      form.append('mode', 'faces');
       const response = await fetch('/api/avatar', { method: 'POST', body: form });
       const result: AvatarUploadResponse & { error?: string } = await response.json();
       if (!result.success) throw new Error(result.error || t('avatarUploadFailed'));
