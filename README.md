@@ -86,6 +86,10 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,NEXTAUTH_URL=https://your-cloud-run-url.a.run.app,GOOGLE_AI_MODEL=gemini-3.5-flash-lite'
    ```
    Then add that URL and its `/auth/callback` redirect URI to the OAuth client.
+6. Let Firestore delete expired one-time avatar upload links (usually within 24 hours of expiry):
+   ```bash
+   gcloud firestore fields ttls update expiresAt --collection-group=AvatarUpload --enable-ttl
+   ```
 
 ## Usage
 
@@ -107,7 +111,11 @@ AI assistants can read and change the family tree through MCP at `<site URL>/api
    ```
    This saves the token in the folder's `.mcp.json`; never commit or share that file.
 
-Tools: `search_persons`, `get_person`, `create_person`, `update_person`, `delete_person`, `create_relationship`, `update_relationship`, `delete_relationship`, and for avatars `get_person_avatar`, `set_person_avatar`, `remove_person_avatar`, `list_saved_faces`, `use_saved_face`. `set_person_avatar` takes base64 image data (JPEG, PNG, GIF or WebP, up to 10MB), not web links, and crops it like an upload in the person form.
+Tools: `search_persons`, `get_person`, `create_person`, `update_person`, `delete_person`, `create_relationship`, `update_relationship`, `delete_relationship`, and for avatars `get_person_avatar`, `set_person_avatar`, `prepare_avatar_upload`, `remove_person_avatar`, `list_saved_faces`, `use_saved_face`.
+
+Avatars (JPEG, PNG, GIF or WebP, up to 10MB) are cropped like an upload in the person form:
+- From the web: `set_person_avatar` takes an `https://` address; the server fetches only public addresses.
+- From a local file: `prepare_avatar_upload` returns a `curl` command with a one-time upload link (one upload to that person, valid for 10 minutes, no API token in it); the agent runs it with the file path filled in.
 
 ## Open Items
 

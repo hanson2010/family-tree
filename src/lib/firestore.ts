@@ -26,6 +26,8 @@ export const COLLECTIONS = {
   AVATAR: 'Avatar',
   /** Personal access tokens for the MCP endpoint; only a hash of each token is stored */
   API_TOKEN: 'ApiToken',
+  /** One-time avatar upload codes for curl, stored under the hash of the code */
+  AVATAR_UPLOAD: 'AvatarUpload',
 } as const;
 
 // Keep KINDS as an alias for backward compatibility

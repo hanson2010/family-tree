@@ -17,6 +17,8 @@ import {
   useSavedFace,
 } from '@/lib/family-service';
 import { aliases } from '@/lib/person-identity';
+import { fetchPublicImage } from '@/lib/safe-fetch';
+import { createUploadCode } from '@/lib/avatar-uploads';
 import type { Person, Relationship } from '@/types';
 import { Gender, RelationshipType } from '@/types';
 
@@ -125,16 +127,8 @@ function imageContent(dataUrl: string) {
   return { type: 'image' as const, mimeType: match?.[1] ?? 'image/jpeg', data: match?.[2] ?? '' };
 }
 
-/** Base64 image data, plain or as a data: URL; web links are refused, not fetched */
-function decodeImage(image: string): Buffer {
-  const trimmed = image.trim();
-  if (/^https?:/i.test(trimmed)) throw new ServiceError(400, 'Web links are not fetched; send the image data as base64.');
-  const base64 = /^data:image\/[a-z0-9.+-]+;base64,/i.test(trimmed) ? trimmed.slice(trimmed.indexOf(',') + 1) : trimmed;
-  const compact = base64.replace(/\s+/g, '');
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) throw new ServiceError(400, 'The image is not valid base64 data.');
-  if (compact.length > Math.ceil((10 * 1024 * 1024 * 4) / 3) + 4) throw new ServiceError(400, 'The image is larger than 10MB.');
-  return Buffer.from(compact, 'base64');
-}
+/** Largest image fetched for an avatar */
+const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
 
 export function createFamilyTreeServer(userId: string): McpServer {
   const server = new McpServer(
@@ -276,17 +270,42 @@ with search_persons before creating them; creating a public person that matches 
     {
       title: 'Set a person’s avatar',
       description:
-        'Give one of your persons an avatar from an image you send: base64 data or a data: URL (JPEG, PNG, GIF or WebP, up to 10MB). The image is scaled so its short edge is 256px and its middle square is kept. Web links are not fetched.',
+        'Give one of your persons an avatar from an image on the web: the server fetches the https:// address (JPEG, PNG, GIF or WebP, up to 10MB), scales it so its short edge is 256px and keeps the middle square. For an image file on this computer, use prepare_avatar_upload instead.',
       inputSchema: z.object({
         id: z.string(),
-        image: z.string().min(1).describe('Base64 image data, or a data:image/...;base64,... URL'),
+        url: z.string().min(1).describe('https:// address of the image'),
       }),
-      annotations: { idempotentHint: true },
+      annotations: { idempotentHint: true, openWorldHint: true },
     },
-    async ({ id, image }) =>
+    async ({ id, url }) =>
       run(async () => {
-        const person = await setPersonAvatar(userId, id, decodeImage(image));
-        return personSummary(person, userId);
+        let image: Buffer;
+        try {
+          image = await fetchPublicImage(url, MAX_AVATAR_BYTES);
+        } catch (error) {
+          throw new ServiceError(400, error instanceof Error ? error.message : 'The image could not be fetched.');
+        }
+        return personSummary(await setPersonAvatar(userId, id, image), userId);
+      })
+  );
+
+  server.registerTool(
+    'prepare_avatar_upload',
+    {
+      title: 'Prepare an avatar upload from a local file',
+      description:
+        'For an image file on this computer: returns a one-time upload link and a curl command. Run the command with the file path filled in; the file goes straight to the server and is used as the person’s avatar (scaled so its short edge is 256px, middle square kept). The link works for one upload to this person, for 10 minutes, and contains no API token.',
+      inputSchema: z.object({ personId: z.string() }),
+    },
+    async ({ personId }) =>
+      run(async () => {
+        const { uploadUrl, expiresAt } = await createUploadCode(userId, personId);
+        return {
+          uploadUrl,
+          expiresAt,
+          command: `curl -F "file=@<path to the image file>" "${uploadUrl}"`,
+          note: 'Replace <path to the image file> with the local path, keeping the @. JPEG, PNG, GIF or WebP, up to 10MB.',
+        };
       })
   );
 

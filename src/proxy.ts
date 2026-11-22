@@ -6,8 +6,9 @@ export default authMiddleware((req) => {
   const isLoggedIn = !!req.auth;
 
   // Public routes that don't require authentication
-  // /api/mcp authenticates with a personal access token, not a sign-in cookie
-  const publicRoutes = ['/auth/signin', '/auth/error', '/api/auth', '/api/mcp'];
+  // /api/mcp authenticates with a personal access token, /api/avatar-upload with a one-time
+  // upload code; neither uses a sign-in cookie
+  const publicRoutes = ['/auth/signin', '/auth/error', '/api/auth', '/api/mcp', '/api/avatar-upload'];
   const isPublicRoute = publicRoutes.some(route =>
     nextUrl.pathname.startsWith(route)
   );
