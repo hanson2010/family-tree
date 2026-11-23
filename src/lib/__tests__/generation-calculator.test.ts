@@ -14,8 +14,8 @@ const createMockPerson = (id: string, name: string, gender: Gender = Gender.MALE
   gender,
   isPrivate: false,
   createdBy: 'test-user',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 const createMockRelationship = (
@@ -28,8 +28,8 @@ const createMockRelationship = (
   personBId,
   type,
   createdBy: 'test-user',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 describe('GenerationCalculator', () => {

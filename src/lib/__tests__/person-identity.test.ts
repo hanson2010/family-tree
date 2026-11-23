@@ -8,6 +8,10 @@ describe('aliases', () => {
     expect(aliases(p('蒋中正', { courtesyName: '介石' }))).toEqual(['蒋中正', '介石', '蒋介石']);
     expect(aliases(p('欧阳修文', { artName: '醉翁' }))).toEqual(['欧阳修文', '醉翁', '欧醉翁', '欧阳醉翁']);
   });
+
+  it('includes other names as written, without the surname', () => {
+    expect(aliases(p('甄英莲', { otherNames: ['香菱', '秋菱'] }))).toEqual(['甄英莲', '香菱', '秋菱']);
+  });
 });
 
 describe('isClanName', () => {
@@ -37,6 +41,12 @@ describe('isSamePerson', () => {
     expect(isSamePerson(p('蒋介石'), p('蒋中正', { courtesyName: '介石', birthYear: 1887 }))).toBe(true);
     expect(isSamePerson(p('蒋中正', { courtesyName: '介石' }), p('介石'))).toBe(true);
     expect(isSamePerson(p('贾宝玉'), p('贾政', { courtesyName: '存周' }))).toBe(false);
+  });
+
+  it('matches through other names', () => {
+    expect(isSamePerson(p('香菱'), p('甄英莲', { otherNames: ['香菱'] }))).toBe(true);
+    expect(isSamePerson(p('甄英莲', { otherNames: ['香菱'] }), p('香菱', { birthYear: 1710 }))).toBe(true);
+    expect(isSamePerson(p('甄英莲'), p('香菱'))).toBe(false);
   });
 
   it('needs equal known birth years for surname-and-氏 names', () => {

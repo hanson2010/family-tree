@@ -1,6 +1,7 @@
 // Secrets come from the APP_SECRETS JSON object when it is set, otherwise from
-// environment variables. Both use the same names.
-type SecretName = 'AUTH_SECRET' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'GOOGLE_AI_API_KEY';
+// environment variables. Both use the same names. (OAuth client IDs are not secrets; they are the
+// GOOGLE_CLIENT_ID and GITHUB_CLIENT_ID settings.)
+type SecretName = 'AUTH_SECRET' | 'GOOGLE_CLIENT_SECRET' | 'GITHUB_CLIENT_SECRET' | 'GOOGLE_AI_API_KEY';
 
 let _appSecrets: Partial<Record<SecretName, string>> | null | undefined;
 
@@ -24,11 +25,11 @@ export const secrets = {
   get authSecret() {
     return getSecret('AUTH_SECRET');
   },
-  get googleClientId() {
-    return getSecret('GOOGLE_CLIENT_ID');
-  },
   get googleClientSecret() {
     return getSecret('GOOGLE_CLIENT_SECRET');
+  },
+  get githubClientSecret() {
+    return getSecret('GITHUB_CLIENT_SECRET');
   },
   get googleAiApiKey() {
     return getSecret('GOOGLE_AI_API_KEY');

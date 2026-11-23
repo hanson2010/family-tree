@@ -10,8 +10,8 @@ const person = (id: string, gender: Gender, birthYear?: number): Person => ({
   birthYear,
   isPrivate: false,
   createdBy: 'u',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 const rel = (a: string, b: string, type = RelationshipType.PARENT_CHILD): Relationship => ({
@@ -20,8 +20,8 @@ const rel = (a: string, b: string, type = RelationshipType.PARENT_CHILD): Relati
   personBId: b,
   type,
   createdBy: 'u',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 const ids = (persons: Person[]) => persons.map((p) => p.id);
@@ -79,6 +79,11 @@ describe('hints', () => {
   it('expects a spouse of the opposite gender and a similar age', () => {
     const { b } = relationshipHints(RelationshipType.SPOUSE, person('a', Gender.MALE, 1700), null);
     expect(b).toEqual({ gender: Gender.FEMALE, birthYears: { from: 1680, to: 1720 } });
+  });
+
+  it('expects siblings born within 25 years of each other', () => {
+    const { b } = relationshipHints(RelationshipType.SIBLING, person('a', Gender.MALE, 1700), null);
+    expect(b).toEqual({ birthYears: { from: 1675, to: 1725 } });
   });
 
   it('expects a female concubine as A and a male husband as B', () => {

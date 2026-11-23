@@ -1,19 +1,23 @@
 import type { Person } from '@/types';
 
 /** What identifies a person well enough to tell whether two records are the same person */
-export type Identity = Pick<Person, 'name' | 'courtesyName' | 'artName' | 'birthYear' | 'birthMonth' | 'birthDay'>;
+export type Identity = Pick<Person, 'name' | 'courtesyName' | 'artName' | 'otherNames' | 'birthYear' | 'birthMonth' | 'birthDay'>;
 
 const clean = (s?: string | null) => s?.trim() || null;
 
 /**
- * Names a person goes by: name, 字 and 号, alone and after the surname (蒋 + 介石 = 蒋介石). The
- * surname is the first character, or the first two in a name of four or more characters.
+ * Names a person goes by: name, 字 and 号, alone and after the surname (蒋 + 介石 = 蒋介石), then
+ * other names as written (香菱 for 甄英莲). The surname is the first character, or the first two in
+ * a name of four or more characters.
  */
-export function aliases(p: Pick<Identity, 'name' | 'courtesyName' | 'artName'>): string[] {
+export function aliases(p: Pick<Identity, 'name' | 'courtesyName' | 'artName' | 'otherNames'>): string[] {
   const full = clean(p.name);
   const others = [clean(p.courtesyName), clean(p.artName)].filter((s): s is string => !!s);
   const surnames = full ? [full.slice(0, 1), ...(full.length >= 4 ? [full.slice(0, 2)] : [])] : [];
-  return [full, ...others, ...surnames.flatMap((s) => others.map((o) => s + o))].filter((s): s is string => !!s);
+  const otherNames = (p.otherNames ?? []).map(clean);
+  return [full, ...others, ...surnames.flatMap((s) => others.map((o) => s + o)), ...otherNames].filter(
+    (s): s is string => !!s
+  );
 }
 
 /** True when one person's name is a name the other goes by */

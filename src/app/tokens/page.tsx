@@ -140,8 +140,8 @@ export default function TokensPage() {
         ) : status !== 'authenticated' ? (
           <div className="rounded-xl border bg-card p-6 text-center">
             <p className="text-sm text-muted-foreground">{t('apiTokensSignIn')}</p>
-            <Button className="mt-4" onClick={() => signIn('google', { callbackUrl: '/tokens' })}>
-              {t('signInWithGoogle')}
+            <Button className="mt-4" onClick={() => signIn(undefined, { callbackUrl: '/tokens' })}>
+              {t('signIn')}
             </Button>
           </div>
         ) : (

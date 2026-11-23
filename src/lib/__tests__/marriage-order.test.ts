@@ -18,8 +18,8 @@ const marriage = (
   startMonth: start?.[1] ?? null,
   startDay: start?.[2] ?? null,
   createdBy: 'u',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 describe('marriageOrdinals', () => {

@@ -4,6 +4,7 @@ import type { Part } from '@google/genai';
 import { generateJson, imagePart } from '@/lib/gemini';
 import { Gender, RelationshipType } from '@/types';
 import type { Extraction } from '@/lib/import';
+import { MAX_OTHER_NAMES, MAX_OTHER_NAME_LENGTH, normalizeOtherNames } from '@/lib/other-names';
 
 /** Longest side of a page image sent to Gemini; small characters in scans need detail */
 const PAGE_SIZE = 3000;
@@ -17,6 +18,8 @@ Persons
 - name: the full name as written. Genealogies often omit the clan surname for clan members; add it
   when the surname is clear from the record. Wives recorded only as "王氏" keep that form.
 - courtesyName: 字. artName: 号.
+- otherNames: other full names the person went by, as written (别名, 小名, 乳名, 曾用名, 法名,
+  本名…), e.g. ["香菱"] for 甄英莲. Not the name, 字 or 号.
 - gender: "male" for sons, husbands, 子, 男; "female" for daughters, wives, 女, 氏; otherwise "unknown".
 - Years: give Gregorian years. Convert reign-era years (乾隆三年 → 1738) and 干支 years when the
   era is clear. Leave a year null if it cannot be determined.
@@ -62,6 +65,7 @@ const extractionSchema = {
           name: { type: 'string' },
           courtesyName: { type: 'string' },
           artName: { type: 'string' },
+          otherNames: { type: 'array', items: { type: 'string' } },
           gender: { type: 'string', enum: Object.keys(GENDERS) },
           birthYear: optionalInteger,
           birthMonth: optionalInteger,
@@ -98,6 +102,14 @@ const loose = (min: number, max: number) =>
 const text = z
   .unknown()
   .transform((v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined));
+/** A list of names; anything that is not a name is dropped */
+const names = z
+  .unknown()
+  .transform((v) =>
+    normalizeOtherNames(Array.isArray(v) ? v.filter((n): n is string => typeof n === 'string') : [])
+      .filter((n) => n.length <= MAX_OTHER_NAME_LENGTH)
+      .slice(0, MAX_OTHER_NAMES)
+  );
 
 const extractionReply = z.object({
   persons: z.array(
@@ -106,6 +118,7 @@ const extractionReply = z.object({
       name: z.string(),
       courtesyName: text,
       artName: text,
+      otherNames: names,
       gender: z.unknown().transform((v) => GENDERS[v as keyof typeof GENDERS] ?? Gender.UNKNOWN),
       birthYear: loose(0, 2100),
       birthMonth: loose(1, 12),

@@ -12,6 +12,9 @@ import { KinshipRelationshipType } from './types';
 import { findRelationshipPath, getGenderKey } from './path-finder';
 import { getChineseKinshipTerm } from './terms';
 import { EXTENDED_KINSHIP_TERMS } from './constants';
+import { householdTerm } from './wives-concubines';
+import { bloodTerm } from './blood-terms';
+import { siblingSpouseTerm } from './sibling-spouse-terms';
 
 export type { KinshipContext, RelationshipPath, RelationshipEdge, PathNode, GenderKey, KinshipSide, GrandparentSide } from './types';
 export { KinshipRelationshipType } from './types';
@@ -48,6 +51,22 @@ export function calculateDetailedRelationship(
       path: null,
       context: { generationDiff: 0 },
     };
+  }
+
+  // Wives, concubines and the husband's children by another of them
+  const household = householdTerm(fromPersonId, toPersonId, relationships, personMap);
+  if (household) {
+    return { term: household.term, path: null, context: { generationDiff: household.generations } };
+  }
+  // The spouse of one's spouse's sibling: 舅嫂, 内弟媳, 连襟, 妯娌, 姐夫, 妹夫
+  const siblingSpouse = siblingSpouseTerm(fromPersonId, toPersonId, relationships, personMap);
+  if (siblingSpouse) {
+    return { term: siblingSpouse.term, path: null, context: { generationDiff: siblingSpouse.generations } };
+  }
+  // Nephews and nieces, cousins and their children, parents' cousins: 堂 or 表
+  const blood = bloodTerm(fromPersonId, toPersonId, relationships, personMap);
+  if (blood) {
+    return { term: blood.term, path: null, context: { generationDiff: blood.generations } };
   }
 
   const path = findRelationshipPath(fromPersonId, toPersonId, persons, relationships);

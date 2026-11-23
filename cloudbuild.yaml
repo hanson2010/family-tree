@@ -43,9 +43,9 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,NEXTAUTH_URL=https://family-tree.pythoner.work,GOOGLE_AI_MODEL=gemini-3.5-flash-lite'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,NEXTAUTH_URL=https://family-tree.pythoner.work,GOOGLE_CLIENT_ID=736322377109-pgnk86943obed8lu8ti7om9gklr6nbhi.apps.googleusercontent.com,GITHUB_CLIENT_ID=Ov23liaa9aU7qPjeep43,GOOGLE_AI_MODEL=gemini-3.5-flash-lite'
       - '--set-secrets'
-      - 'APP_SECRETS=app-secrets:latest'
+      - 'APP_SECRETS=family-tree-app-secrets:latest'
     id: 'deploy-cloud-run'
     waitFor: ['push-image-sha']
 

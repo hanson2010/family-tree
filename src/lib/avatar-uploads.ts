@@ -1,12 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { KINDS, getEntity, getFirestore, queryEntitiesByProperty } from '@/lib/firestore';
-import { ServiceError, setPersonAvatar } from '@/lib/family-service';
-import type { Person } from '@/types';
+import { ServiceError, getVisiblePerson, saveFaceFromImage, setPersonAvatar } from '@/lib/family-service';
+import type { Person, SavedAvatar } from '@/types';
 
 /**
- * One-time avatar upload codes, so an agent can send a local image file with curl without the
- * image passing through the model: a code works for one person and one upload, for 10 minutes,
- * and contains no API token. Only a hash of each code is stored.
+ * One-time upload codes, so an agent can send a local image file with curl without the image
+ * passing through the model: a code is for one face photo, used as one person's avatar or saved
+ * as a saved face, works for 10 minutes and contains no API token. Only a hash of each code is
+ * stored.
  */
 
 const UPLOAD_TTL_MS = 10 * 60 * 1000;
@@ -14,7 +15,8 @@ const UPLOAD_TTL_MS = 10 * 60 * 1000;
 interface StoredUpload {
   id: string;
   userId: string;
-  personId: string;
+  /** The person whose avatar is set; absent when the photo becomes a saved face */
+  personId?: string | null;
   expiresAt: Date;
 }
 
@@ -28,11 +30,15 @@ export function siteUrl(): string {
   return (process.env.AUTH_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000').replace(/\/+$/, '');
 }
 
-/** A new upload code for one of the user's persons */
-export async function createUploadCode(userId: string, personId: string): Promise<{ uploadUrl: string; expiresAt: string }> {
-  const person = await getEntity<Person>(KINDS.PERSON, personId);
-  if (!person || (person.isPrivate && person.createdBy !== userId)) throw new ServiceError(404, 'Person not found');
-  if (person.createdBy !== userId) throw new ServiceError(403, 'Only the person’s creator can change them');
+/** A new upload code for an avatar of one of the user's persons, or for a saved face when `personId` is null */
+export async function createUploadCode(
+  userId: string,
+  personId: string | null
+): Promise<{ uploadUrl: string; expiresAt: string }> {
+  if (personId) {
+    const person = await getVisiblePerson(personId, userId);
+    if (person.createdBy !== userId) throw new ServiceError(403, 'Only the person’s creator can change them');
+  }
 
   const db = getFirestore();
   // Codes of this user that have expired are removed as new ones are made
@@ -52,10 +58,10 @@ export async function createUploadCode(userId: string, personId: string): Promis
 }
 
 /**
- * Use an upload code: give its person an avatar from the image, then retire the code. An image
- * that cannot be read leaves the code usable until it expires.
+ * Use an upload code: give its person an avatar from the image, or save the image as a saved face,
+ * then retire the code. An image that cannot be used leaves the code usable until it expires.
  */
-export async function useUploadCode(code: string, image: Buffer): Promise<Person> {
+export async function redeemUploadCode(code: string, image: Buffer): Promise<{ person: Person } | { face: SavedAvatar }> {
   const id = hash(code);
   const upload = await getEntity<StoredUpload>(KINDS.AVATAR_UPLOAD, id);
   if (!upload) throw new ServiceError(404, 'This upload link is not valid or was already used.');
@@ -63,7 +69,9 @@ export async function useUploadCode(code: string, image: Buffer): Promise<Person
     await getFirestore().collection(KINDS.AVATAR_UPLOAD).doc(id).delete();
     throw new ServiceError(410, 'This upload link has expired. Ask for a new one.');
   }
-  const person = await setPersonAvatar(upload.userId, upload.personId, image);
+  const result = upload.personId
+    ? { person: await setPersonAvatar(upload.userId, upload.personId, image) }
+    : { face: await saveFaceFromImage(upload.userId, image) };
   await getFirestore().collection(KINDS.AVATAR_UPLOAD).doc(id).delete();
-  return person;
+  return result;
 }

@@ -40,8 +40,9 @@ export function getGrandparentTerm(toGender: GenderKey, side?: KinshipSide): str
   return toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GRANDFATHER_PATERNAL : KINSHIP_TERMS.BASIC.GRANDMOTHER_PATERNAL;
 }
 
-export function getGrandchildTerm(toGender: GenderKey, fromGender?: GenderKey): string {
-  if (fromGender === 'FEMALE') {
+/** A son's children are 孙子 / 孙女, a daughter's 外孙 / 外孙女, whoever the grandparent is */
+export function getGrandchildTerm(toGender: GenderKey, side?: KinshipSide): string {
+  if (side === 'MATERNAL') {
     return toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GRANDSON_MATERNAL : KINSHIP_TERMS.BASIC.GRANDDAUGHTER_MATERNAL;
   }
   return toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GRANDSON_PATERNAL : KINSHIP_TERMS.BASIC.GRANDDAUGHTER_PATERNAL;
@@ -54,8 +55,9 @@ export function getGreatGrandparentTerm(toGender: GenderKey, side?: KinshipSide)
   return toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GREAT_GRANDFATHER_PATERNAL : KINSHIP_TERMS.BASIC.GREAT_GRANDMOTHER_PATERNAL;
 }
 
-export function getGreatGrandchildTerm(toGender: GenderKey): string {
-  return toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GREAT_GRANDSON_PATERNAL : KINSHIP_TERMS.BASIC.GREAT_GRANDDAUGHTER_PATERNAL;
+export function getGreatGrandchildTerm(toGender: GenderKey, side?: KinshipSide): string {
+  const term = toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GREAT_GRANDSON_PATERNAL : KINSHIP_TERMS.BASIC.GREAT_GRANDDAUGHTER_PATERNAL;
+  return side === 'MATERNAL' ? `外${term}` : term;
 }
 
 export function getGreatGreatGrandparentTerm(toGender: GenderKey, side?: KinshipSide): string {
@@ -65,8 +67,9 @@ export function getGreatGreatGrandparentTerm(toGender: GenderKey, side?: Kinship
   return toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GREAT_GREAT_GRANDFATHER_PATERNAL : KINSHIP_TERMS.BASIC.GREAT_GREAT_GRANDMOTHER_PATERNAL;
 }
 
-export function getGreatGreatGrandchildTerm(toGender: GenderKey): string {
-  return toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GREAT_GREAT_GRANDSON : KINSHIP_TERMS.BASIC.GREAT_GREAT_GRANDDAUGHTER;
+export function getGreatGreatGrandchildTerm(toGender: GenderKey, side?: KinshipSide): string {
+  const term = toGender === 'MALE' ? KINSHIP_TERMS.BASIC.GREAT_GREAT_GRANDSON : KINSHIP_TERMS.BASIC.GREAT_GREAT_GRANDDAUGHTER;
+  return side === 'MATERNAL' ? `外${term}` : term;
 }
 
 export function getAdoptiveParentTerm(toGender: GenderKey): string {
@@ -115,9 +118,8 @@ export function getDynamicGrandparentTerm(gen: number, toGender: GenderKey, side
   return toGender === 'MALE' ? `第${gen}代${prefix}祖父` : `第${gen}代${prefix}祖母`;
 }
 
-export function getDynamicGrandchildTerm(gen: number, toGender: GenderKey, fromGender?: GenderKey): string {
-  const isMaternal = fromGender === 'FEMALE';
-  const prefix = isMaternal ? '外' : '';
+export function getDynamicGrandchildTerm(gen: number, toGender: GenderKey, side?: KinshipSide): string {
+  const prefix = side === 'MATERNAL' ? '外' : '';
   if (gen === 2) {
     return toGender === 'MALE' ? `${prefix}孙` : `${prefix}孙女`;
   }

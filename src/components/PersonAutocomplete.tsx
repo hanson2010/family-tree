@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useLocale } from '@/components/LocaleProvider';
@@ -22,6 +23,14 @@ interface PersonAutocompleteProps {
   excludeIds?: string[];
   placeholder: string;
   label: string;
+  /** Label and input as two cells of a FormGrid row instead of stacked */
+  inline?: boolean;
+  /** Label for screen readers only, e.g. in a compact row */
+  labelHidden?: boolean;
+  /** A ✕ in the box clears the choice (onChange(''); the placeholder then says what that means) */
+  clearable?: boolean;
+  disabled?: boolean;
+  className?: string;
 }
 
 /** Text box that suggests persons by name, courtesy name or art name */
@@ -35,6 +44,11 @@ export function PersonAutocomplete({
   excludeIds = [],
   placeholder,
   label,
+  inline = false,
+  labelHidden = false,
+  clearable = false,
+  disabled = false,
+  className,
 }: PersonAutocompleteProps) {
   const { t } = useLocale();
   const [inputValue, setInputValue] = useState('');
@@ -134,14 +148,17 @@ export function PersonAutocomplete({
   };
 
   return (
-    <div className="space-y-2">
-      <Label htmlFor={inputId}>{label}</Label>
-      <div className="relative">
+    <div className={cn(inline ? 'contents' : labelHidden ? undefined : 'space-y-2', !inline && className)}>
+      <Label htmlFor={inputId} className={cn(inline && 'text-right', labelHidden && 'sr-only')}>
+        {label}
+      </Label>
+      <div className={cn('relative', inline && className)}>
         <Input
           id={inputId}
           ref={inputRef}
           placeholder={placeholder}
           value={inputValue}
+          disabled={disabled}
           onChange={(e) => {
             setInputValue(e.target.value);
             setShowSuggestions(true);
@@ -149,7 +166,23 @@ export function PersonAutocomplete({
           onKeyDown={handleKeyDown}
           onClick={() => setShowSuggestions(true)}
           autoComplete="off"
+          className={cn(labelHidden && 'h-9', clearable && value && 'pr-8')}
         />
+        {clearable && value && !disabled && (
+          <button
+            type="button"
+            aria-label={t('clearChoice')}
+            title={t('clearChoice')}
+            onClick={() => {
+              onChange('');
+              setInputValue('');
+              setShowSuggestions(false);
+            }}
+            className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
         {showSuggestions && suggestions.length > 0 && (
           <div
             ref={suggestionsRef}

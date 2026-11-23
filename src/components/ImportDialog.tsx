@@ -22,6 +22,8 @@ import {
 import type { ApiResponse, Person } from '@/types';
 import { Gender, RelationshipType } from '@/types';
 import { cn } from '@/lib/utils';
+import { PersonAutocomplete } from '@/components/PersonAutocomplete';
+import { formatOtherNames, parseOtherNames } from '@/lib/other-names';
 
 const MAX_FILES = 6;
 
@@ -44,11 +46,13 @@ interface ImportDialogProps {
   isOpen: boolean;
   /** Persons the user can see, to link imported persons to */
   persons: Person[];
+  /** Ids of persons in at least one relationship, to order suggestions */
+  linkedIds: Set<string>;
   onClose: () => void;
   onImported: () => Promise<void> | void;
 }
 
-export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDialogProps) {
+export function ImportDialog({ isOpen, persons, linkedIds, onClose, onImported }: ImportDialogProps) {
   const { t } = useLocale();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -136,7 +140,6 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
 
   const nameOf = (key: string) => review?.persons.find((p) => p.key === key)?.name || key;
   const isIncluded = (key: string) => !!review?.persons.find((p) => p.key === key && p.include && p.name.trim());
-  const sortedPersons = [...persons].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
   const numberValue = (v: string) => (v.trim() === '' ? null : Number.parseInt(v, 10) || null);
 
   return (
@@ -248,23 +251,23 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
                           <option value={Gender.FEMALE}>{t('female')}</option>
                           <option value={Gender.UNKNOWN}>{t('unknown')}</option>
                         </select>
-                        <select
-                          aria-label={t('matchLabel')}
-                          value={p.match}
+                        {/* Its own line on narrow screens, the rest of the row on wider ones */}
+                        <PersonAutocomplete
+                          labelHidden
+                          clearable
+                          label={t('matchLabel')}
+                          placeholder={t('matchNewSearch')}
+                          value={isNew ? '' : p.match}
+                          onChange={(id) => updatePerson(p.key, { match: id || 'new' })}
+                          persons={persons}
+                          linkedIds={linkedIds}
+                          hint={{
+                            gender: p.gender === Gender.UNKNOWN ? undefined : p.gender,
+                            birthYears: p.birthYear != null ? { from: p.birthYear - 2, to: p.birthYear + 2 } : undefined,
+                          }}
                           disabled={!p.include}
-                          onChange={(e) => updatePerson(p.key, { match: e.target.value })}
-                          // Its own line on narrow screens, the rest of the row on wider ones
-                          className={cn(fieldClass, 'min-w-0 basis-full sm:basis-auto sm:flex-1')}
-                        >
-                          <option value="new">{t('matchNew')}</option>
-                          {sortedPersons.map((existing) => (
-                            <option key={existing.id} value={existing.id}>
-                              {t('matchExisting')}
-                              {existing.name}
-                              {existing.birthYear ? ` (${existing.birthYear})` : ''}
-                            </option>
-                          ))}
-                        </select>
+                          className="min-w-0 basis-full sm:basis-auto sm:flex-1"
+                        />
                       </div>
 
                       {isNew && (
@@ -284,6 +287,14 @@ export function ImportDialog({ isOpen, persons, onClose, onImported }: ImportDia
                             disabled={!editable}
                             onChange={(e) => updatePerson(p.key, { artName: e.target.value })}
                             className="h-9"
+                          />
+                          <Input
+                            aria-label={t('otherNames')}
+                            placeholder={t('otherNames')}
+                            defaultValue={formatOtherNames(p.otherNames)}
+                            disabled={!editable}
+                            onBlur={(e) => updatePerson(p.key, { otherNames: parseOtherNames(e.target.value) })}
+                            className="h-9 sm:col-span-2"
                           />
                           {(['birth', 'death'] as const).map((which) => (
                             <div key={which} className="flex min-w-0 items-center gap-1">

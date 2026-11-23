@@ -8,6 +8,8 @@ import { PersonAvatar } from '@/components/PersonAvatar';
 import type { Person, Relationship } from '@/types';
 import { Gender, RelationshipType } from '@/types';
 import type { TranslationKey } from '@/lib/i18n';
+import { formatOtherNames } from '@/lib/other-names';
+import { WebLink } from '@/components/WebLink';
 import { GitBranch, GitMerge, Lock, MousePointerClick, Pencil, Trash2 } from 'lucide-react';
 
 interface PersonDetailsPanelProps {
@@ -136,12 +138,14 @@ export function PersonDetailsPanel({
   const genderLabel =
     person.gender === Gender.MALE ? t('male') : person.gender === Gender.FEMALE ? t('female') : t('unknown');
 
-  const facts = [
-    { label: t('gender'), value: genderLabel },
+  const facts: { label: string; value: React.ReactNode }[] = [
     { label: t('courtesyName'), value: person.courtesyName },
     { label: t('artName'), value: person.artName },
+    { label: t('otherNames'), value: formatOtherNames(person.otherNames) },
+    { label: t('gender'), value: genderLabel },
     { label: t('birthDate'), value: birthDate },
     { label: t('deathDate'), value: deathDate },
+    { label: t('link'), value: person.link ? <WebLink href={person.link} /> : null },
   ].filter((fact) => fact.value);
 
   return (
@@ -170,10 +174,18 @@ export function PersonDetailsPanel({
         {facts.map((fact) => (
           <div key={fact.label} className="flex justify-between gap-4 px-3 py-2">
             <dt className="shrink-0 text-muted-foreground">{fact.label}</dt>
-            <dd className="text-right">{fact.value}</dd>
+            <dd className="min-w-0 text-right">{fact.value}</dd>
           </div>
         ))}
       </dl>
+
+      {/* Description */}
+      {person.description && (
+        <div className="space-y-1">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('description')}</h3>
+          <p className="whitespace-pre-line break-words text-sm leading-relaxed">{person.description}</p>
+        </div>
+      )}
 
       {/* Relatives */}
       <div className="space-y-3">

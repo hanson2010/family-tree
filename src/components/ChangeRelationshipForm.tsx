@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -20,10 +19,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import type { Relationship, RelationshipFormData, RelationshipType, Person, Gender } from '@/types';
-import { RelationshipType as RelType, Gender as GenderEnum } from '@/types';
-import { Loader2, Trash2, Edit, AlertTriangle, User } from 'lucide-react';
+import type { Relationship, RelationshipFormData, RelationshipType, Person } from '@/types';
+import { RelationshipType as RelType } from '@/types';
+import { Loader2, Trash2, Edit, AlertTriangle } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
+import { PersonAutocomplete } from '@/components/PersonAutocomplete';
+import { DateInputs, FormGrid, RowLabel } from '@/components/FormLayout';
+import { linkedPersonIds } from '@/lib/candidates';
 
 interface ModifyOrRemoveRelationshipFormProps {
   isOpen: boolean;
@@ -54,178 +56,6 @@ const TYPE_FAMILIES: RelationshipType[][] = [
   [RelType.SIBLING, RelType.HALF_SIBLING, RelType.SWORN_SIBLING],
 ];
 
-// Person autocomplete input component
-interface PersonAutocompleteProps {
-  value: string;
-  onChange: (value: string) => void;
-  persons: Person[];
-  excludeIds?: string[];
-  placeholder: string;
-  label: string;
-}
-
-function PersonAutocomplete({
-  value,
-  onChange,
-  persons,
-  excludeIds = [],
-  placeholder,
-  label,
-}: PersonAutocompleteProps) {
-  const [inputValue, setInputValue] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-
-  const selectedPerson = React.useMemo(() => {
-    return persons.find(p => p.id === value);
-  }, [persons, value]);
-
-  useEffect(() => {
-    if (selectedPerson) {
-      setInputValue(selectedPerson.name);
-    } else {
-      setInputValue('');
-    }
-  }, [selectedPerson]);
-
-  const filteredPersons = React.useMemo(() => {
-    let filtered = persons.filter(p => !excludeIds.includes(p.id));
-
-    if (!inputValue.trim()) {
-      return filtered.slice(0, 10);
-    }
-    const query = inputValue.toLowerCase();
-    return filtered
-      .filter(p => p.name.toLowerCase().includes(query))
-      .slice(0, 10);
-  }, [persons, excludeIds, inputValue]);
-
-  useEffect(() => {
-    setHighlightedIndex(0);
-  }, [filteredPersons.length]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        suggestionsRef.current &&
-        !suggestionsRef.current.contains(event.target as Node) &&
-        inputRef.current &&
-        !inputRef.current.contains(event.target as Node)
-      ) {
-        setShowSuggestions(false);
-        if (selectedPerson) {
-          setInputValue(selectedPerson.name);
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [selectedPerson]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
-    setShowSuggestions(true);
-  };
-
-  const handleSelectPerson = (person: Person) => {
-    setInputValue(person.name);
-    onChange(person.id);
-    setShowSuggestions(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // The list opens on a click, typing or ↓, not on focus, so it does not cover a dialog that
-    // has just opened with this box focused
-    if (!showSuggestions && e.key === 'ArrowDown') {
-      e.preventDefault();
-      setShowSuggestions(true);
-      return;
-    }
-    if (!showSuggestions || filteredPersons.length === 0) {
-      if (e.key === 'Escape') {
-        setShowSuggestions(false);
-        if (selectedPerson) {
-          setInputValue(selectedPerson.name);
-        }
-      }
-      return;
-    }
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        setHighlightedIndex(prev =>
-          prev < filteredPersons.length - 1 ? prev + 1 : prev
-        );
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (filteredPersons[highlightedIndex]) {
-          handleSelectPerson(filteredPersons[highlightedIndex]);
-        }
-        break;
-      case 'Escape':
-        setShowSuggestions(false);
-        if (selectedPerson) {
-          setInputValue(selectedPerson.name);
-        }
-        break;
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="relative">
-        <Input
-          ref={inputRef}
-          placeholder={placeholder}
-          value={inputValue}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onClick={() => setShowSuggestions(true)}
-          autoComplete="off"
-        />
-        {showSuggestions && filteredPersons.length > 0 && (
-          <div
-            ref={suggestionsRef}
-            className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg z-50 max-h-60 overflow-y-auto"
-          >
-            {filteredPersons.map((person, index) => (
-              <div
-                key={person.id}
-                className={`px-3 py-2 cursor-pointer flex items-center gap-2 ${
-                  index === highlightedIndex
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-accent/50'
-                }`}
-                onClick={() => handleSelectPerson(person)}
-                onMouseEnter={() => setHighlightedIndex(index)}
-              >
-                <span className="font-medium text-sm">{person.name}</span>
-                <span className="text-xs text-muted-foreground">({person.gender})</span>
-                {person.birthYear && (
-                  <span className="text-xs text-muted-foreground">
-                    ({person.birthYear}
-                    {person.deathYear ? ` - ${person.deathYear}` : ''})
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function ChangeRelationshipForm({
   isOpen,
   relationships,
@@ -237,6 +67,7 @@ export function ChangeRelationshipForm({
 }: ModifyOrRemoveRelationshipFormProps) {
   const { toast } = useToast();
   const { t } = useLocale();
+  const linkedIds = useMemo(() => linkedPersonIds(relationships), [relationships]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -392,13 +223,17 @@ export function ChangeRelationshipForm({
         <div className="space-y-4">
           {/* Person Selection - only show if no preselected person */}
           {!preselectedPersonId && (
-            <PersonAutocomplete
-              value={selectedPersonId}
-              onChange={setSelectedPersonId}
-              persons={persons}
-              placeholder={t('searchByName')}
-              label={t('selectPerson')}
-            />
+            <FormGrid>
+              <PersonAutocomplete
+                inline
+                value={selectedPersonId}
+                onChange={setSelectedPersonId}
+                persons={persons}
+                linkedIds={linkedIds}
+                placeholder={t('searchByName')}
+                label={t('selectPerson')}
+              />
+            </FormGrid>
           )}
 
           {/* Relationships List */}
@@ -450,11 +285,11 @@ export function ChangeRelationshipForm({
                       {t('editRelationship')}
                     </div>
 
-                    {/* Type: within the same kind, so the two persons and direction stay valid */}
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">{t('relationshipType')}</Label>
+                    <FormGrid>
+                      {/* Type: within the same kind, so the two persons and direction stay valid */}
+                      <RowLabel htmlFor="edit-type">{t('relationshipType')}</RowLabel>
                       <Select value={editType ?? rel.type} onValueChange={(value) => setEditType(value as RelationshipType)}>
-                        <SelectTrigger>
+                        <SelectTrigger id="edit-type">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -465,69 +300,25 @@ export function ChangeRelationshipForm({
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
 
-                    {/* Start Date */}
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">{t('startDate')}</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        <Input
-                          type="number"
-                          placeholder={t('year')}
-                          value={editStartYear || ''}
-                          onChange={(e) => setEditStartYear(e.target.value ? parseInt(e.target.value) : null)}
-                          min={0}
-                          max={2100}
-                        />
-                        <Input
-                          type="number"
-                          placeholder={t('month')}
-                          value={editStartMonth || ''}
-                          onChange={(e) => setEditStartMonth(e.target.value ? parseInt(e.target.value) : null)}
-                          min={1}
-                          max={12}
-                        />
-                        <Input
-                          type="number"
-                          placeholder={t('day')}
-                          value={editStartDay || ''}
-                          onChange={(e) => setEditStartDay(e.target.value ? parseInt(e.target.value) : null)}
-                          min={1}
-                          max={31}
-                        />
-                      </div>
-                    </div>
+                      <RowLabel htmlFor="edit-start">{t('startDate')}</RowLabel>
+                      <DateInputs
+                        id="edit-start"
+                        value={{ year: editStartYear, month: editStartMonth, day: editStartDay }}
+                        onChange={(part, value) =>
+                          ({ year: setEditStartYear, month: setEditStartMonth, day: setEditStartDay })[part](value)
+                        }
+                      />
 
-                    {/* End Date */}
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">{t('endDate')}</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        <Input
-                          type="number"
-                          placeholder={t('year')}
-                          value={editEndYear || ''}
-                          onChange={(e) => setEditEndYear(e.target.value ? parseInt(e.target.value) : null)}
-                          min={0}
-                          max={2100}
-                        />
-                        <Input
-                          type="number"
-                          placeholder={t('month')}
-                          value={editEndMonth || ''}
-                          onChange={(e) => setEditEndMonth(e.target.value ? parseInt(e.target.value) : null)}
-                          min={1}
-                          max={12}
-                        />
-                        <Input
-                          type="number"
-                          placeholder={t('day')}
-                          value={editEndDay || ''}
-                          onChange={(e) => setEditEndDay(e.target.value ? parseInt(e.target.value) : null)}
-                          min={1}
-                          max={31}
-                        />
-                      </div>
-                    </div>
+                      <RowLabel htmlFor="edit-end">{t('endDate')}</RowLabel>
+                      <DateInputs
+                        id="edit-end"
+                        value={{ year: editEndYear, month: editEndMonth, day: editEndDay }}
+                        onChange={(part, value) =>
+                          ({ year: setEditEndYear, month: setEditEndMonth, day: setEditEndDay })[part](value)
+                        }
+                      />
+                    </FormGrid>
 
                     {/* Action Buttons */}
                     <div className="flex gap-2">

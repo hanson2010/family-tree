@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { KINDS, saveEntity, queryEntities } from '@/lib/firestore';
+import { addRecords, hasPersons } from '@/lib/family-service';
+import type { StoredPerson } from '@/lib/store';
 import type { Person, Relationship, ApiResponse } from '@/types';
 import { shouldSwapPartners } from '@/lib/relationship-direction';
 import { Gender, RelationshipType } from '@/types';
@@ -47,26 +48,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if data already exists
-    const existingPersons = await queryEntities<Person>(KINDS.PERSON);
-    if (existingPersons.length > 0) {
+    if (await hasPersons()) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: 'Database already contains data. Clear it first.' },
         { status: 400 }
       );
     }
 
-    const now = new Date();
+    const now = new Date().toISOString();
     const userId = session.user.id;
 
     // Create persons
     const personIdMap = new Map<string, string>();
-    const persons: Person[] = [];
+    const persons: StoredPerson[] = [];
 
     for (const member of JIA_FAMILY_MEMBERS) {
       const id = uuidv4();
       personIdMap.set(member.name!, id);
 
-      const person: Person = {
+      const person: StoredPerson = {
         id,
         name: member.name!,
         courtesyName: member.courtesyName,
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         deathYear: member.deathYear ?? null,
         deathMonth: member.deathMonth ?? null,
         deathDay: member.deathDay ?? null,
-        avatar: member.avatar ?? null,
+        avatarVersion: null,
         isPrivate: false,
         createdBy: userId,
         createdAt: now,
@@ -86,7 +86,6 @@ export async function POST(request: NextRequest) {
       };
 
       persons.push(person);
-      await saveEntity(KINDS.PERSON, person);
     }
 
     // Create relationships
@@ -109,7 +108,6 @@ export async function POST(request: NextRequest) {
           updatedAt: now,
         };
         relationships.push(rel);
-        saveEntity(KINDS.RELATIONSHIP, rel);
       }
     };
 
@@ -138,6 +136,8 @@ export async function POST(request: NextRequest) {
     createRel('贾政', '王夫人', RelationshipType.SPOUSE);
     createRel('贾琏', '王熙凤', RelationshipType.SPOUSE);
     createRel('贾珠', '李纨', RelationshipType.SPOUSE);
+
+    await addRecords(persons, relationships);
 
     return NextResponse.json<ApiResponse<{ persons: number; relationships: number }>>({
       success: true,

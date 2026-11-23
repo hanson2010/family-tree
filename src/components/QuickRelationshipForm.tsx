@@ -10,11 +10,10 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
 import { PersonAutocomplete } from '@/components/PersonAutocomplete';
+import { DateInputs, FormGrid, RowLabel } from '@/components/FormLayout';
 import { familyHints } from '@/lib/candidates';
 import type { RelationshipFormData, Person } from '@/types';
 import { RelationshipType as RelType, Gender as GenderEnum } from '@/types';
@@ -201,116 +200,64 @@ export function QuickRelationshipForm({
             {t('quickAddRelationshipDesc')}
           </p>
 
-          {/* Dad */}
-          <PersonAutocomplete
-            value={dadId}
-            onChange={setDadId}
-            persons={persons}
-            linkedIds={linkedIds}
-            hint={hints.father}
-            excludeIds={[momId, childId].filter(Boolean)}
-            placeholder={t('searchByName')}
-            label={t('father')}
-            genderFilter={GenderEnum.MALE}
-          />
+          <FormGrid>
+            <PersonAutocomplete
+              inline
+              value={dadId}
+              onChange={setDadId}
+              persons={persons}
+              linkedIds={linkedIds}
+              hint={hints.father}
+              excludeIds={[momId, childId].filter(Boolean)}
+              placeholder={t('searchByName')}
+              label={t('father')}
+              genderFilter={GenderEnum.MALE}
+            />
+            <PersonAutocomplete
+              inline
+              value={momId}
+              onChange={setMomId}
+              persons={persons}
+              linkedIds={linkedIds}
+              hint={hints.mother}
+              excludeIds={[dadId, childId].filter(Boolean)}
+              placeholder={t('searchByName')}
+              label={t('mother')}
+              genderFilter={GenderEnum.FEMALE}
+            />
+            <PersonAutocomplete
+              inline
+              value={childId}
+              onChange={setChildId}
+              persons={persons}
+              linkedIds={linkedIds}
+              hint={hints.child}
+              excludeIds={[dadId, momId].filter(Boolean)}
+              placeholder={t('searchByName')}
+              label={t('child')}
+            />
 
-          {/* Mom */}
-          <PersonAutocomplete
-            value={momId}
-            onChange={setMomId}
-            persons={persons}
-            linkedIds={linkedIds}
-            hint={hints.mother}
-            excludeIds={[dadId, childId].filter(Boolean)}
-            placeholder={t('searchByName')}
-            label={t('mother')}
-            genderFilter={GenderEnum.FEMALE}
-          />
-
-          {/* Child */}
-          <PersonAutocomplete
-            value={childId}
-            onChange={setChildId}
-            persons={persons}
-            linkedIds={linkedIds}
-            hint={hints.child}
-            excludeIds={[dadId, momId].filter(Boolean)}
-            placeholder={t('searchByName')}
-            label={t('child')}
-          />
-
-          {/* Marriage Dates */}
-          <div className="border-t pt-4 mt-4">
-            <Label className="text-sm font-medium">{t('marriageDateOptional')}</Label>
-          </div>
-
-          {/* Marriage Start Date */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">{t('startDate')}</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                type="number"
-                placeholder={t('year')}
-                value={marriageStartYear || ''}
-                onChange={(e) => setMarriageStartYear(e.target.value ? parseInt(e.target.value) : null)}
-                min={0}
-                max={2100}
-                disabled={isSubmitting}
-              />
-              <Input
-                type="number"
-                placeholder={t('month')}
-                value={marriageStartMonth || ''}
-                onChange={(e) => setMarriageStartMonth(e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={12}
-                disabled={isSubmitting}
-              />
-              <Input
-                type="number"
-                placeholder={t('day')}
-                value={marriageStartDay || ''}
-                onChange={(e) => setMarriageStartDay(e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={31}
-                disabled={isSubmitting}
-              />
-            </div>
-          </div>
-
-          {/* Marriage End Date */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">{t('endDate')}</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                type="number"
-                placeholder={t('year')}
-                value={marriageEndYear || ''}
-                onChange={(e) => setMarriageEndYear(e.target.value ? parseInt(e.target.value) : null)}
-                min={0}
-                max={2100}
-                disabled={isSubmitting}
-              />
-              <Input
-                type="number"
-                placeholder={t('month')}
-                value={marriageEndMonth || ''}
-                onChange={(e) => setMarriageEndMonth(e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={12}
-                disabled={isSubmitting}
-              />
-              <Input
-                type="number"
-                placeholder={t('day')}
-                value={marriageEndDay || ''}
-                onChange={(e) => setMarriageEndDay(e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={31}
-                disabled={isSubmitting}
-              />
-            </div>
-          </div>
+            {/* Marriage dates */}
+            <p className="col-span-2 border-t pt-3 text-sm font-medium">{t('marriageDateOptional')}</p>
+            <RowLabel htmlFor="marriage-start">{t('startDate')}</RowLabel>
+            <DateInputs
+              id="marriage-start"
+              value={{ year: marriageStartYear, month: marriageStartMonth, day: marriageStartDay }}
+              onChange={(part, value) =>
+                ({ year: setMarriageStartYear, month: setMarriageStartMonth, day: setMarriageStartDay })[part](value)
+              }
+              disabled={isSubmitting}
+            />
+            <RowLabel htmlFor="marriage-end">{t('endDate')}</RowLabel>
+            <DateInputs
+              id="marriage-end"
+              value={{ year: marriageEndYear, month: marriageEndMonth, day: marriageEndDay }}
+              onChange={(part, value) =>
+                ({ year: setMarriageEndYear, month: setMarriageEndMonth, day: setMarriageEndDay })[part](value)
+              }
+              disabled={isSubmitting}
+            />
+          </FormGrid>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

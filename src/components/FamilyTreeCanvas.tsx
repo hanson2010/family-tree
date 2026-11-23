@@ -7,6 +7,7 @@ import { Maximize2, Minus, Plus } from 'lucide-react';
 import type { Person, Relationship, GraphNode } from '@/types';
 import { Gender as GenderEnum, RelationshipType } from '@/types';
 import { getChineseRelationshipLabel } from '@/lib/chinese-kinship';
+import { closeKinIds } from '@/lib/kinship-scope';
 import { DEFAULT_LAYOUT_OPTIONS, PARENTAL_TYPES, PARTNER_TYPES, layoutFamilyTree } from '@/lib/tree-layout';
 import { marriageOrdinals } from '@/lib/marriage-order';
 import { useLocale } from '@/components/LocaleProvider';
@@ -20,6 +21,13 @@ interface FamilyTreeCanvasProps {
   allPersons?: Person[];
   relationships: Relationship[];
   selectedPersonId: string | null;
+  /** Changes when the selected person is chosen again: the view centers on them once more */
+  recenterRequest?: number;
+  /**
+   * Search results: where each of `persons` goes, instead of the family tree around the selected
+   * person. Choosing a person then shows their details without moving the view.
+   */
+  forestPositions?: Map<string, { x: number; y: number }> | null;
   onSelectPerson: (personId: string) => void;
   onEditPerson?: (person: Person) => void;
 }
@@ -259,6 +267,8 @@ export function FamilyTreeCanvas({
   allPersons,
   relationships,
   selectedPersonId,
+  recenterRequest = 0,
+  forestPositions = null,
   onSelectPerson,
   onEditPerson,
 }: FamilyTreeCanvasProps) {
@@ -344,17 +354,26 @@ export function FamilyTreeCanvas({
     setTooltip(null);
 
     // The layout is centered on (0, 0); the zoom transform places it in the viewport.
-    const centerId = selectedPersonId || (persons.length > 0 ? persons[0].id : null);
+    const isForest = !!forestPositions;
+    const centerId = isForest
+      ? selectedPersonId && forestPositions.has(selectedPersonId)
+        ? selectedPersonId
+        : persons[0]?.id ?? null
+      : selectedPersonId || (persons.length > 0 ? persons[0].id : null);
     // The tree is everyone connected through any person, so a filter that hides someone does not
     // cut off the persons related through them; `persons` then decides who is drawn
-    const connectedIds = centerId ? findConnectedPersons(centerId, kinshipPersons, relationships) : new Set<string>();
-    const visiblePersons = persons.filter((person) => {
-      if (!connectedIds.has(person.id)) return false;
-      const gen = person.relativeGeneration ?? 0;
-      return gen >= GENERATION_MIN && gen <= GENERATION_MAX;
-    });
+    const connectedIds =
+      !isForest && centerId ? findConnectedPersons(centerId, kinshipPersons, relationships) : new Set<string>();
+    const visiblePersons = isForest
+      ? persons.filter((person) => forestPositions.has(person.id))
+      : persons.filter((person) => {
+          if (!connectedIds.has(person.id)) return false;
+          const gen = person.relativeGeneration ?? 0;
+          return gen >= GENERATION_MIN && gen <= GENERATION_MAX;
+        });
     const visibleIds = new Set(visiblePersons.map((p) => p.id));
-    const viewKey = `${centerId}|${[...visibleIds].sort().join(',')}`;
+    // Search results keep their view while persons are chosen in them
+    const viewKey = `${isForest ? 'forest' : centerId}|${[...visibleIds].sort().join(',')}`;
 
     const saved = positionsRef.current;
     const isFreshLayout = visiblePersons.every((p) => !saved.has(p.id));
@@ -362,15 +381,19 @@ export function FamilyTreeCanvas({
     const visibleRelationships = relationships.filter(
       (rel) => visibleIds.has(rel.personAId) && visibleIds.has(rel.personBId)
     );
-    const layout = layoutFamilyTree(visiblePersons, visibleRelationships);
-    const settled = layout.positions;
+    const settled = isForest ? forestPositions : layoutFamilyTree(visiblePersons, visibleRelationships).positions;
+    // Kinship terms only for relatives within 四代 of the selected person (and their spouses)
+    const closeIds = !isForest && selectedPersonId ? closeKinIds(selectedPersonId, relationships) : null;
 
     const nodes: TreeNode[] = visiblePersons.map((person) => {
       const position = settled.get(person.id)!;
       let kinship: string | undefined;
-      if (person.id === selectedPersonId) {
+      // Search results have no center person, so no kinship terms
+      if (isForest) {
+        kinship = undefined;
+      } else if (person.id === selectedPersonId) {
         kinship = selfLabel;
-      } else if (selectedPersonId) {
+      } else if (selectedPersonId && closeIds?.has(person.id)) {
         try {
           const term = getChineseRelationshipLabel(selectedPersonId, person.id, kinshipPersons, relationships);
           if (term && term !== UNKNOWN_KINSHIP) kinship = term;
@@ -660,7 +683,14 @@ export function FamilyTreeCanvas({
       glide?.stop();
       svg.interrupt();
     };
-  }, [persons, connectorIds, kinshipPersons, relationships, selectedPersonId, onSelectPerson, onEditPerson, selfLabel, centerOn]);
+  }, [persons, connectorIds, kinshipPersons, relationships, selectedPersonId, forestPositions, onSelectPerson, onEditPerson, selfLabel, centerOn]);
+
+  // The selected person chosen again (from search, say): glide back to them
+  const selectedRef = useRef(selectedPersonId);
+  selectedRef.current = selectedPersonId;
+  useEffect(() => {
+    if (recenterRequest > 0) centerOn(selectedRef.current, MOVE_DURATION);
+  }, [recenterRequest, centerOn]);
 
   return (
     <div ref={containerRef} className="tree-canvas relative h-full w-full overflow-hidden">

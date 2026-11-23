@@ -9,8 +9,8 @@ const rel = (a: string, b: string, type = RelationshipType.PARENT_CHILD): Relati
   personBId: b,
   type,
   createdBy: 'u',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 const sorted = (set: Set<string>) => [...set].sort();

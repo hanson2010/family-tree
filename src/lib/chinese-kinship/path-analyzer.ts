@@ -16,6 +16,8 @@ interface PathAnalysisContext {
   lastIntermediatePersonId: string | null;
   side: KinshipSide | undefined;
   firstParentId: string | null;
+  /** The speaker's child on a path going straight down: a daughter makes the line 外 (外孙) */
+  descendantSide: KinshipSide | undefined;
   grandparentSide: GrandparentSide | undefined;
   grandparentId: string | null;
   stepCount: number;
@@ -35,6 +37,7 @@ function initializeContext(): PathAnalysisContext {
     lastIntermediatePersonId: null,
     side: undefined,
     firstParentId: null,
+    descendantSide: undefined,
     grandparentSide: undefined,
     grandparentId: null,
     stepCount: 0,
@@ -56,6 +59,9 @@ function processEdge(
         ctx.downSteps++;
         ctx.lastRelationshipType = KinshipRelationshipType.CHILD;
         ctx.lastIntermediatePersonId = edge.personId;
+        if (ctx.downSteps === 1 && ctx.upSteps === 0) {
+          ctx.descendantSide = personMap.get(edge.personId)?.gender === GenderEnum.FEMALE ? 'MATERNAL' : 'PATERNAL';
+        }
       } else {
         ctx.generationDiff -= 1;
         ctx.upSteps++;
@@ -242,6 +248,7 @@ function buildRelationshipPath(
       type: 'DIRECT',
       generations: 2,
       relationshipType: KinshipRelationshipType.GRANDCHILD,
+      side: ctx.descendantSide,
     };
   }
 
@@ -298,6 +305,7 @@ function buildRelationshipPath(
       type: 'DIRECT',
       generations: 3,
       relationshipType: KinshipRelationshipType.GREAT_GRANDCHILD,
+      side: ctx.descendantSide,
     };
   }
 
@@ -319,6 +327,7 @@ function buildRelationshipPath(
       type: 'DIRECT',
       generations: 4,
       relationshipType: KinshipRelationshipType.GREAT_GREAT_GRANDCHILD,
+      side: ctx.descendantSide,
     };
   }
 
@@ -415,6 +424,7 @@ function buildDefaultPath(ctx: PathAnalysisContext, generationDiff: number): Rel
         type: 'DIRECT',
         generations: absGenDiff,
         relationshipType: absGenDiff === 1 ? KinshipRelationshipType.CHILD : `GRANDCHILD_${absGenDiff}`,
+        side: ctx.descendantSide,
       };
     } else {
       return {

@@ -22,8 +22,8 @@ const existing = (id: string, name: string, birthYear: number | null = null): Pe
   birthYear,
   isPrivate: false,
   createdBy: 'u',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 describe('findExistingMatch', () => {

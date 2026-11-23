@@ -6,9 +6,8 @@ import { BrandMark } from '@/components/BrandMark';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { KeyRound, Languages, LogOut, PanelLeft } from 'lucide-react';
+import { Languages, LogIn, LogOut, PanelLeft } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
-import { GoogleIcon } from '@/components/GoogleIcon';
 import { Locale } from '@/lib/i18n';
 
 interface HeaderProps {
@@ -60,11 +59,16 @@ export function Header({ onOpenMenu }: HeaderProps) {
           <div className="h-8 w-24 animate-pulse rounded-md bg-muted" />
         ) : session ? (
           <div className="flex items-center gap-1">
-            <div className="ml-1 flex items-center gap-2">
+            <Link
+              href="/account"
+              title={t('account')}
+              className="ml-1 flex items-center gap-2 rounded-full py-0.5 pl-0.5 pr-0.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:pr-3"
+            >
               {session.user?.image ? (
+                // Decorative: the link's title names the page
                 <Image
                   src={session.user.image}
-                  alt={session.user.name || 'User'}
+                  alt=""
                   width={32}
                   height={32}
                   unoptimized
@@ -80,12 +84,8 @@ export function Header({ onOpenMenu }: HeaderProps) {
               <span className="hidden max-w-[10rem] truncate text-sm font-medium md:inline">
                 {session.user?.name}
               </span>
-            </div>
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" asChild>
-              <Link href="/tokens" title={t('apiTokens')} aria-label={t('apiTokens')}>
-                <KeyRound className="h-4 w-4" />
-              </Link>
-            </Button>
+              <span className="sr-only md:hidden">{t('account')}</span>
+            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -98,10 +98,9 @@ export function Header({ onOpenMenu }: HeaderProps) {
             </Button>
           </div>
         ) : (
-          <Button variant="outline" size="sm" className="bg-card" onClick={() => signIn('google')}>
-            <GoogleIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">{t('signInWithGoogle')}</span>
-            <span className="sm:hidden">{t('signIn')}</span>
+          <Button variant="outline" size="sm" className="bg-card" onClick={() => signIn()}>
+            <LogIn className="mr-2 h-4 w-4" />
+            {t('signIn')}
           </Button>
         )}
       </div>

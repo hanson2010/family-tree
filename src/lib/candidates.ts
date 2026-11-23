@@ -15,6 +15,7 @@ const PARENT_GAP = { min: 15, max: 60 };
 const MOTHER_GAP = { min: 15, max: 50 };
 const SPOUSE_GAP = 20;
 const CONCUBINE_GAP = 30;
+const SIBLING_GAP = 25;
 const SWORN_SIBLING_GAP = 20;
 
 const around = (year: number | null | undefined, gap: number) =>
@@ -75,6 +76,9 @@ export function relationshipHints(type: RelationshipType, a: Chosen, b: Chosen):
         a: { gender: Gender.FEMALE, birthYears: around(b?.birthYear, CONCUBINE_GAP) },
         b: { gender: Gender.MALE, birthYears: around(a?.birthYear, CONCUBINE_GAP) },
       };
+    case RelationshipType.SIBLING:
+    case RelationshipType.HALF_SIBLING:
+      return { a: { birthYears: around(b?.birthYear, SIBLING_GAP) }, b: { birthYears: around(a?.birthYear, SIBLING_GAP) } };
     case RelationshipType.SWORN_SIBLING:
       return { a: { birthYears: around(b?.birthYear, SWORN_SIBLING_GAP) }, b: { birthYears: around(a?.birthYear, SWORN_SIBLING_GAP) } };
     default:
@@ -124,7 +128,8 @@ export function rankCandidates(
         !q ||
         p.name.toLowerCase().includes(q) ||
         !!p.courtesyName?.toLowerCase().includes(q) ||
-        !!p.artName?.toLowerCase().includes(q)
+        !!p.artName?.toLowerCase().includes(q) ||
+        !!p.otherNames?.some((n) => n.toLowerCase().includes(q))
     )
     .map((p) => ({ p, k: key(p) }))
     .sort((x, y) => {

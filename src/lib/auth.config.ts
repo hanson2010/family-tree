@@ -1,12 +1,12 @@
 import NextAuth from 'next-auth';
-import { googleProvider } from '@/lib/google-provider';
+import { authProviders } from '@/lib/auth-providers';
 import { secrets } from '@/lib/secrets';
 
 // Auth configuration without database access, used by the proxy to read the session.
 export const { auth: authMiddleware, handlers } = NextAuth({
   secret: secrets.authSecret,
   trustHost: true,
-  providers: [googleProvider()],
+  providers: authProviders(),
   callbacks: {
     async session({ session, token }) {
       if (token?.sub) {

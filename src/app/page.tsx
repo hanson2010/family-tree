@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSession, signIn } from 'next-auth/react';
-import { ChevronRight, Database, Loader2, UserPlus } from 'lucide-react';
+import { ChevronRight, Database, Loader2, LogIn, UserPlus } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FamilyTreeCanvas } from '@/components/FamilyTreeCanvas';
 import { LeftPanel } from '@/components/LeftPanel';
@@ -16,7 +16,6 @@ import { ChangeRelationshipForm } from '@/components/ChangeRelationshipForm';
 import { ImportDialog } from '@/components/ImportDialog';
 import { GroupPhotoDialog } from '@/components/GroupPhotoDialog';
 import { MergePersonDialog } from '@/components/MergePersonDialog';
-import { GoogleIcon } from '@/components/GoogleIcon';
 import { BrandMark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,6 +33,7 @@ import type { Person, Relationship, GenerationRange, PersonFormData, Relationshi
 import { GenerationCalculator } from '@/lib/generation-calculator';
 import { connectedPersonIds, linkedPersonIds } from '@/lib/candidates';
 import { connectFiltered } from '@/lib/tree-filter';
+import { matchesQuery, searchForest } from '@/lib/search-forest';
 
 const SELECTED_PERSON_KEY = 'selectedPersonId';
 
@@ -55,6 +55,11 @@ export default function HomePage() {
   const [persons, setPersons] = useState<Person[]>([]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const selectedPersonIdRef = useRef(selectedPersonId);
+  selectedPersonIdRef.current = selectedPersonId;
+  // Counts choices of the person already selected, which change nothing else, so the tree
+  // still centers on them (e.g. after panning away, or searching for the person just added)
+  const [recenterRequest, setRecenterRequest] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
   // Panels shown as drawers on small screens
@@ -81,6 +86,8 @@ export default function HomePage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
+  // The search shown on the canvas as a forest of matches ('' for the family tree)
+  const [activeSearch, setActiveSearch] = useState('');
 
   const [generationRange, setGenerationRange] = useState<GenerationRange>({
     ancestors: 3,
@@ -128,6 +135,7 @@ export default function HomePage() {
   }, []);
 
   const selectPerson = useCallback((personId: string) => {
+    if (personId === selectedPersonIdRef.current) setRecenterRequest((n) => n + 1);
     setSelectedPersonId(personId);
     setIsMenuOpen(false);
     try {
@@ -184,14 +192,9 @@ export default function HomePage() {
     });
   }, [persons, relationships, selectedPersonId, generationRange]);
 
-  // Apply filters
-  const { filteredPersons, connectorIds } = React.useMemo(() => {
-    // Privacy filter - only show private persons to their creator
-    const allowed = visiblePersons.filter(
-      (person) => !person.isPrivate || session?.user?.id === person.createdBy
-    );
-
-    const matches = (person: Person) => {
+  // Gender and "living in year" filters
+  const matchesFilters = useCallback(
+    (person: Person) => {
       if (filterGenders.length > 0 && !filterGenders.includes(person.gender)) return false;
       // Living in year: born no later than, and not dead before, the year
       if (filterLivingInYear !== null) {
@@ -199,7 +202,28 @@ export default function HomePage() {
         if (person.deathYear && person.deathYear < filterLivingInYear) return false;
       }
       return true;
-    };
+    },
+    [filterGenders, filterLivingInYear]
+  );
+
+  // Search results: matches (narrowed by the filters) as a forest; null without a search or matches
+  const forest = React.useMemo(() => {
+    if (!activeSearch) return null;
+    const matches = persons.filter((p) => matchesQuery(p, activeSearch) && matchesFilters(p));
+    return searchForest(persons, relationships, matches);
+  }, [activeSearch, persons, relationships, matchesFilters]);
+  const forestPersons = React.useMemo(
+    () => (forest ? persons.filter((p) => forest.positions.has(p.id)) : []),
+    [forest, persons]
+  );
+
+  // Apply filters
+  const { filteredPersons, connectorIds } = React.useMemo(() => {
+    // Privacy filter - only show private persons to their creator
+    const allowed = visiblePersons.filter(
+      (person) => !person.isPrivate || session?.user?.id === person.createdBy
+    );
+    const matches = matchesFilters;
 
     const isFiltering = filterGenders.length > 0 || filterLivingInYear !== null;
     if (!isFiltering || !selectedPersonId) {
@@ -215,7 +239,7 @@ export default function HomePage() {
       relationships
     );
     return { filteredPersons: allowed.filter((p) => tree.ids.has(p.id)), connectorIds: tree.connectorIds };
-  }, [visiblePersons, relationships, session, selectedPersonId, filterGenders, filterLivingInYear]);
+  }, [visiblePersons, relationships, session, selectedPersonId, filterGenders, filterLivingInYear, matchesFilters]);
 
   // Handlers
   const requireSignIn = useCallback(() => {
@@ -405,6 +429,7 @@ export default function HomePage() {
     if (eligiblePersons.length > 0) {
       const randomIndex = Math.floor(Math.random() * eligiblePersons.length);
       setSearchQuery('');
+      setActiveSearch('');
       selectPerson(eligiblePersons[randomIndex].id);
     }
   }, [persons, selectedPersonId, filterGenders, filterLivingInYear, selectPerson]);
@@ -498,6 +523,15 @@ export default function HomePage() {
           <LeftPanel
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
+            onSearch={(query) => {
+              setActiveSearch(query);
+              setIsMenuOpen(false);
+            }}
+            search={
+              activeSearch && forest
+                ? { query: activeSearch, total: forest.total, shown: forest.matchIds.size }
+                : null
+            }
             onAddPerson={handleAddPerson}
             onAddRelationship={handleAddRelationship}
             onQuickAddRelationship={handleQuickAddRelationship}
@@ -507,7 +541,6 @@ export default function HomePage() {
             onReload={handleReload}
             isReloading={isReloading}
             persons={persons}
-            onSelectPerson={selectPerson}
             filterGenders={filterGenders}
             filterLivingInYear={filterLivingInYear}
             generationRange={generationRange}
@@ -549,9 +582,9 @@ export default function HomePage() {
                     </>
                   ) : (
                     status !== 'loading' && (
-                      <Button variant="outline" onClick={() => signIn('google')}>
-                        <GoogleIcon className="mr-2 h-4 w-4" />
-                        {t('signInWithGoogle')}
+                      <Button variant="outline" onClick={() => signIn()}>
+                        <LogIn className="mr-2 h-4 w-4" />
+                        {t('signIn')}
                       </Button>
                     )
                   )}
@@ -560,11 +593,13 @@ export default function HomePage() {
             </div>
           ) : (
             <FamilyTreeCanvas
-              persons={filteredPersons}
-              connectorIds={connectorIds}
+              persons={forest && forest.total > 0 ? forestPersons : filteredPersons}
+              connectorIds={forest && forest.total > 0 ? forest.connectorIds : connectorIds}
+              forestPositions={forest && forest.total > 0 ? forest.positions : null}
               allPersons={persons}
               relationships={relationships}
               selectedPersonId={selectedPersonId}
+              recenterRequest={recenterRequest}
               onSelectPerson={selectPerson}
               onEditPerson={handleEditPerson}
             />
@@ -640,6 +675,7 @@ export default function HomePage() {
       />
 
       <ImportDialog
+        linkedIds={linkedIds}
         isOpen={isImportOpen}
         persons={persons}
         onClose={() => setIsImportOpen(false)}
@@ -660,6 +696,7 @@ export default function HomePage() {
       />
 
       <GroupPhotoDialog
+        linkedIds={linkedIds}
         isOpen={isGroupPhotoOpen}
         persons={ownPersonsInTree}
         onClose={() => setIsGroupPhotoOpen(false)}

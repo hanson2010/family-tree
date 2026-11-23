@@ -12,6 +12,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { formatOtherNames, parseOtherNames } from '@/lib/other-names';
+import { MAX_DESCRIPTION_LENGTH, MAX_LINK_LENGTH } from '@/lib/web-link';
+import { DateInputs, FormGrid, RowLabel } from '@/components/FormLayout';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -62,15 +65,6 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
     };
   }, [isOpen]);
 
-  const deleteSavedAvatar = async (id: string) => {
-    const response = await fetch(`/api/avatars/${id}`, { method: 'DELETE' });
-    if (response.ok) {
-      setSavedAvatars((list) => list.filter((a) => a.id !== id));
-      if (chosenSavedId === id) setChosenSavedId(null);
-    } else {
-      toast({ variant: 'destructive', title: t('error'), description: t('failedToDelete') });
-    }
-  };
   const [formData, setFormData] = useState<PersonFormData>({
     name: person?.name || '',
     courtesyName: person?.courtesyName || '',
@@ -82,12 +76,17 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
     deathYear: person?.deathYear || null,
     deathMonth: person?.deathMonth || null,
     deathDay: person?.deathDay || null,
+    link: person?.link || '',
+    description: person?.description || '',
     avatar: person?.avatar || null,
     isPrivate: person?.isPrivate || false,
   });
+  // Other names as typed; split into the list on submit
+  const [otherNamesText, setOtherNamesText] = useState(formatOtherNames(person?.otherNames));
 
   // Reset form when person changes
   React.useEffect(() => {
+    setOtherNamesText(formatOtherNames(person?.otherNames));
     if (person) {
       setFormData({
         name: person.name || '',
@@ -100,6 +99,8 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
         deathYear: person.deathYear || null,
         deathMonth: person.deathMonth || null,
         deathDay: person.deathDay || null,
+        link: person.link || '',
+        description: person.description || '',
         avatar: person.avatar || null,
         isPrivate: person.isPrivate || false,
       });
@@ -115,6 +116,8 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
         deathYear: null,
         deathMonth: null,
         deathDay: null,
+        link: '',
+        description: '',
         avatar: null,
         isPrivate: false,
       });
@@ -190,7 +193,8 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
       // A saved face still shown as the avatar is sent by id; the server saves the person and
       // removes the face from the saved list in one step
       const used = savedAvatars.find((a) => a.id === chosenSavedId && a.image === formData.avatar);
-      await onSubmit(used ? { ...formData, savedAvatarId: used.id } : formData);
+      const data = { ...formData, otherNames: parseOtherNames(otherNamesText) };
+      await onSubmit(used ? { ...data, savedAvatarId: used.id } : data);
       if (used) setSavedAvatars((list) => list.filter((a) => a.id !== used.id));
       toast({
         title: mode === 'create' ? t('personCreated') : t('personUpdated'),
@@ -217,7 +221,7 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {/* Avatar Upload */}
           <div className="flex items-center gap-4">
             <div className="relative w-20 h-20 rounded-full bg-muted flex items-center justify-center overflow-hidden">
@@ -278,82 +282,68 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
           {savedAvatars.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                {t('savedFaces')} ({savedAvatars.length})
+                {t('savedFacesClickToUse')} ({savedAvatars.length})
               </p>
               {/* Newest first; about three rows show, the rest scroll vertically */}
               <div className="flex max-h-[11.5rem] flex-wrap gap-2.5 overflow-y-auto p-1">
                 {savedAvatars.map((saved) => (
-                  <div key={saved.id} className="relative shrink-0">
-                    <button
-                      type="button"
-                      aria-label={t('useSavedFace')}
-                      onClick={() => {
-                        setFormData(prev => ({ ...prev, avatar: saved.image }));
-                        setChosenSavedId(saved.id);
-                      }}
-                      className={`h-12 w-12 overflow-hidden rounded-full border-2 transition hover:border-primary focus-visible:border-primary focus-visible:outline-none ${
-                        chosenSavedId === saved.id ? 'border-primary' : 'border-transparent'
-                      }`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={saved.image} alt="" className="h-full w-full object-cover" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={t('deleteSavedFace')}
-                      onClick={() => deleteSavedAvatar(saved.id)}
-                      className="absolute -right-1 -top-1 rounded-full bg-background p-0.5 text-muted-foreground shadow hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
+                  <button
+                    key={saved.id}
+                    type="button"
+                    aria-label={t('useSavedFace')}
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, avatar: saved.image }));
+                      setChosenSavedId(saved.id);
+                    }}
+                    className={`h-12 w-12 shrink-0 overflow-hidden rounded-full border-2 transition hover:border-primary focus-visible:border-primary focus-visible:outline-none ${
+                      chosenSavedId === saved.id ? 'border-primary' : 'border-transparent'
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={saved.image} alt="" className="h-full w-full object-cover" />
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Name */}
-          <div className="space-y-2">
-            <Label htmlFor="name">{t('name')} *</Label>
+          {/* Fields: label on the left, input on the right */}
+          <FormGrid>
+            <RowLabel htmlFor="name">{t('name')} *</RowLabel>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => handleInputChange('name', e.target.value)}
               placeholder={t('name')}
             />
-          </div>
 
-          {/* Courtesy Name and Art Name */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="courtesyName">{t('courtesyName')}</Label>
+            <RowLabel htmlFor="courtesyName">{t('courtesyName')}</RowLabel>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3">
               <Input
                 id="courtesyName"
                 value={formData.courtesyName || ''}
                 onChange={(e) => handleInputChange('courtesyName', e.target.value)}
-                placeholder={t('courtesyName')}
               />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="artName">{t('artName')}</Label>
               <Input
                 id="artName"
                 value={formData.artName || ''}
                 onChange={(e) => handleInputChange('artName', e.target.value)}
-                placeholder={t('artName')}
               />
             </div>
-          </div>
 
-          {/* Gender and Privacy */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>{t('gender')} *</Label>
-              <Select
-                value={formData.gender}
-                onValueChange={(value) => handleInputChange('gender', value as Gender)}
-              >
-                <SelectTrigger>
+            <RowLabel htmlFor="otherNames">{t('otherNames')}</RowLabel>
+            <Input
+              id="otherNames"
+              value={otherNamesText}
+              onChange={(e) => setOtherNamesText(e.target.value)}
+              placeholder={t('otherNamesHint')}
+            />
+
+            <RowLabel htmlFor="gender">{t('gender')} *</RowLabel>
+            <div className="flex items-center gap-4">
+              <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value as Gender)}>
+                <SelectTrigger id="gender" className="w-28">
                   <SelectValue placeholder={t('gender')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -362,84 +352,57 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
                   <SelectItem value={GenderEnum.UNKNOWN}>{t('unknown')}</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t('isPrivate')}</Label>
-              <div className="flex items-center space-x-2 pt-2">
+              <div className="flex items-center gap-2">
                 <Switch
                   id="isPrivate"
                   checked={formData.isPrivate}
                   onCheckedChange={(checked) => handleInputChange('isPrivate', checked)}
                 />
-                <Label htmlFor="isPrivate" className="text-sm">
-                  {t('isPrivate')}
-                </Label>
+                <Label htmlFor="isPrivate">{t('isPrivate')}</Label>
               </div>
             </div>
-          </div>
 
-          {/* Birth Date */}
-          <div className="space-y-2">
-            <Label>{t('birthDate')}</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                type="number"
-                placeholder={t('year')}
-                value={formData.birthYear || ''}
-                onChange={(e) => handleInputChange('birthYear', e.target.value ? parseInt(e.target.value) : null)}
-                min={0}
-                max={2100}
-              />
-              <Input
-                type="number"
-                placeholder={t('month')}
-                value={formData.birthMonth || ''}
-                onChange={(e) => handleInputChange('birthMonth', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={12}
-              />
-              <Input
-                type="number"
-                placeholder={t('day')}
-                value={formData.birthDay || ''}
-                onChange={(e) => handleInputChange('birthDay', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={31}
-              />
-            </div>
-          </div>
+            {(['birth', 'death'] as const).map((which) => (
+              <React.Fragment key={which}>
+                <RowLabel htmlFor={`${which}Year`}>{t(which === 'birth' ? 'birthDate' : 'deathDate')}</RowLabel>
+                <DateInputs
+                  id={`${which}Year`}
+                  value={
+                    which === 'birth'
+                      ? { year: formData.birthYear, month: formData.birthMonth, day: formData.birthDay }
+                      : { year: formData.deathYear, month: formData.deathMonth, day: formData.deathDay }
+                  }
+                  onChange={(part, value) =>
+                    handleInputChange(`${which}${part[0].toUpperCase()}${part.slice(1)}` as keyof PersonFormData, value)
+                  }
+                />
+              </React.Fragment>
+            ))}
 
-          {/* Death Date */}
-          <div className="space-y-2">
-            <Label>{t('deathDate')}</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                type="number"
-                placeholder={t('year')}
-                value={formData.deathYear || ''}
-                onChange={(e) => handleInputChange('deathYear', e.target.value ? parseInt(e.target.value) : null)}
-                min={0}
-                max={2100}
-              />
-              <Input
-                type="number"
-                placeholder={t('month')}
-                value={formData.deathMonth || ''}
-                onChange={(e) => handleInputChange('deathMonth', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={12}
-              />
-              <Input
-                type="number"
-                placeholder={t('day')}
-                value={formData.deathDay || ''}
-                onChange={(e) => handleInputChange('deathDay', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={31}
-              />
-            </div>
-          </div>
+            <RowLabel htmlFor="link">{t('link')}</RowLabel>
+            <Input
+              id="link"
+              type="url"
+              inputMode="url"
+              value={formData.link || ''}
+              onChange={(e) => handleInputChange('link', e.target.value)}
+              placeholder="https://"
+              maxLength={MAX_LINK_LENGTH}
+            />
+
+            <RowLabel htmlFor="description" top>
+              {t('description')}
+            </RowLabel>
+            <textarea
+              id="description"
+              value={formData.description || ''}
+              onChange={(e) => handleInputChange('description', e.target.value)}
+              placeholder={t('descriptionHint')}
+              rows={3}
+              maxLength={MAX_DESCRIPTION_LENGTH}
+              className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+          </FormGrid>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

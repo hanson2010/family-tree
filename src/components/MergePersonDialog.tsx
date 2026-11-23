@@ -8,15 +8,17 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
 import { PersonAutocomplete } from '@/components/PersonAutocomplete';
+import { FormGrid } from '@/components/FormLayout';
 import { PersonAvatar } from '@/components/PersonAvatar';
 import { planMerge } from '@/lib/merge';
+import { formatOtherNames, mergeOtherNames } from '@/lib/other-names';
 import type { TranslationKey } from '@/lib/i18n';
 import type { ApiResponse, Person, Relationship } from '@/types';
 import { Gender } from '@/types';
 import { cn } from '@/lib/utils';
 
 type Side = 'this' | 'other';
-type Field = 'name' | 'courtesyName' | 'artName' | 'gender' | 'birth' | 'death' | 'avatar' | 'isPrivate';
+type Field = 'name' | 'courtesyName' | 'artName' | 'gender' | 'birth' | 'death' | 'link' | 'description' | 'avatar' | 'isPrivate';
 
 const FIELDS: { field: Field; label: TranslationKey }[] = [
   { field: 'name', label: 'name' },
@@ -25,6 +27,8 @@ const FIELDS: { field: Field; label: TranslationKey }[] = [
   { field: 'gender', label: 'gender' },
   { field: 'birth', label: 'birthDate' },
   { field: 'death', label: 'deathDate' },
+  { field: 'link', label: 'link' },
+  { field: 'description', label: 'description' },
   { field: 'avatar', label: 'avatar' },
   { field: 'isPrivate', label: 'isPrivate' },
 ];
@@ -94,6 +98,8 @@ export function MergePersonDialog({ isOpen, person, candidates, linkedIds, relat
   if (!person) return null;
 
   const pick = (field: Field) => (sideOf(field) === 'this' || !other ? person : other);
+  // Both persons' other names, plus the name not kept, so no name is lost
+  const otherNames = other ? mergeOtherNames(person, other, pick('name').name) : [];
 
   const merge = async () => {
     if (!other) return;
@@ -107,6 +113,7 @@ export function MergePersonDialog({ isOpen, person, candidates, linkedIds, relat
           name: pick('name').name,
           courtesyName: pick('courtesyName').courtesyName ?? '',
           artName: pick('artName').artName ?? '',
+          otherNames,
           gender: pick('gender').gender,
           birthYear: birth.birthYear ?? null,
           birthMonth: birth.birthMonth ?? null,
@@ -114,6 +121,8 @@ export function MergePersonDialog({ isOpen, person, candidates, linkedIds, relat
           deathYear: death.deathYear ?? null,
           deathMonth: death.deathMonth ?? null,
           deathDay: death.deathDay ?? null,
+          link: pick('link').link ?? '',
+          description: pick('description').description ?? '',
           isPrivate: pick('isPrivate').isPrivate,
         },
         avatarFrom: pick('avatar').avatar ? sideOf('avatar') : 'none',
@@ -154,16 +163,19 @@ export function MergePersonDialog({ isOpen, person, candidates, linkedIds, relat
           <DialogDescription>{t('mergeDescription').replaceAll('{name}', person.name)}</DialogDescription>
         </DialogHeader>
 
-        <PersonAutocomplete
-          value={otherId}
-          onChange={setOtherId}
-          persons={candidates}
-          linkedIds={linkedIds}
-          hint={{ gender: person.gender === Gender.UNKNOWN ? undefined : person.gender }}
-          excludeIds={[person.id]}
-          placeholder={t('searchByName')}
-          label={t('mergeWith')}
-        />
+        <FormGrid>
+          <PersonAutocomplete
+            inline
+            value={otherId}
+            onChange={setOtherId}
+            persons={candidates}
+            linkedIds={linkedIds}
+            hint={{ gender: person.gender === Gender.UNKNOWN ? undefined : person.gender }}
+            excludeIds={[person.id]}
+            placeholder={t('searchByName')}
+            label={t('mergeWith')}
+          />
+        </FormGrid>
 
         {other && (
           <div className="space-y-3">
@@ -205,6 +217,11 @@ export function MergePersonDialog({ isOpen, person, candidates, linkedIds, relat
                   ))}
                 </tbody>
               </table>
+            )}
+            {otherNames.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t('otherNames')}: {formatOtherNames(otherNames)}
+              </p>
             )}
             {plan && (
               <p className="text-sm text-muted-foreground">

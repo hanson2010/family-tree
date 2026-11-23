@@ -1,18 +1,19 @@
-import { KINDS, queryEntities } from '@/lib/firestore';
 import { isSamePerson, type Identity } from '@/lib/person-identity';
 import type { Person } from '@/types';
 
+type Candidate = Identity & Pick<Person, 'id' | 'isPrivate' | 'createdBy'>;
+
 /**
- * The existing person that `person` duplicates, among those `userId` can see: public persons and
- * the user's own. Persons with ids in `excludeIds` (the one being edited or merged) do not count.
- * Another user's private person does not count: the user cannot see it.
+ * The person in `persons` that `person` duplicates, among those `userId` can see: public persons
+ * and the user's own. Persons with ids in `excludeIds` (the one being edited or merged) do not
+ * count. Another user's private person does not count: the user cannot see it.
  */
-export async function findVisibleDuplicate(
+export function findDuplicate<T extends Candidate>(
+  persons: T[],
   person: Identity,
   userId: string,
   excludeIds: string[] = []
-): Promise<Person | null> {
-  const persons = await queryEntities<Person>(KINDS.PERSON);
+): T | null {
   return (
     persons.find(
       (p) => !excludeIds.includes(p.id) && (!p.isPrivate || p.createdBy === userId) && isSamePerson(person, p)

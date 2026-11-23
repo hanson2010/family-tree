@@ -31,6 +31,8 @@ export interface Person {
   name: string;
   courtesyName?: string;  // zi (character) - Chinese: zi
   artName?: string;       // hao (art name) - Chinese: hao
+  /** Other full names (别名, 小名, …), sorted by pinyin; missing on persons saved before it existed */
+  otherNames?: string[];
   gender: Gender;
 
   // Precise birth date
@@ -43,15 +45,25 @@ export interface Person {
   deathMonth?: number | null;
   deathDay?: number | null;
 
-  // Avatar - base64 encoded image
+  /** One web page about the person, e.g. on Wikipedia or 百度百科 */
+  link?: string;
+  /** Free-text notes about the person */
+  description?: string;
+
+  /**
+   * Address of the avatar image (/api/persons/{id}/avatar?v=…, changing with the image), or null.
+   * In a save request: a data: URL sets a new avatar, null removes it, and anything else (left
+   * out, or the address sent back unchanged) keeps the current one.
+   */
   avatar?: string | null;
 
   // Privacy control
   isPrivate: boolean;
   createdBy: string;
 
-  createdAt: Date;
-  updatedAt: Date;
+  /** ISO 8601 */
+  createdAt: string;
+  updatedAt: string;
 
   // Computed field (relative to selected person)
   relativeGeneration?: number;
@@ -74,13 +86,16 @@ export interface Relationship {
   endDay?: number | null;
 
   createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
+  /** ISO 8601 */
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface User {
   id: string;
+  /** Verified by Google or GitHub; used to link accounts with the same email */
   email: string | null;
+  emailVerified?: boolean;
   name: string | null;
   avatarUrl: string | null;
   createdAt: Date;
@@ -128,6 +143,7 @@ export interface PersonFormData {
   name: string;
   courtesyName?: string;
   artName?: string;
+  otherNames?: string[];
   gender: Gender;
 
   birthYear?: number | null;
@@ -137,6 +153,9 @@ export interface PersonFormData {
   deathYear?: number | null;
   deathMonth?: number | null;
   deathDay?: number | null;
+
+  link?: string;
+  description?: string;
 
   avatar?: string | null;
   isPrivate: boolean;
@@ -194,11 +213,19 @@ export interface AvatarUploadResponse {
 
 // Zod validation schemas
 import { z } from 'zod';
+import { MAX_OTHER_NAMES, MAX_OTHER_NAME_LENGTH, normalizeOtherNames } from '@/lib/other-names';
+import { MAX_DESCRIPTION_LENGTH, MAX_LINK_LENGTH, isWebUrl } from '@/lib/web-link';
 
 export const personSchema = z.object({
   name: z.string().min(1, 'name is required'),
   courtesyName: z.string().optional(),
   artName: z.string().optional(),
+  /** Stored trimmed, without repeats and sorted by pinyin; left out keeps a person's current ones */
+  otherNames: z
+    .array(z.string().max(MAX_OTHER_NAME_LENGTH))
+    .max(MAX_OTHER_NAMES)
+    .optional()
+    .transform((names) => (names === undefined ? undefined : normalizeOtherNames(names))),
   gender: z.nativeEnum(Gender),
   birthYear: z.number().int().min(0).max(2100).nullable().optional(),
   birthMonth: z.number().int().min(1).max(12).nullable().optional(),
@@ -206,6 +233,15 @@ export const personSchema = z.object({
   deathYear: z.number().int().min(0).max(2100).nullable().optional(),
   deathMonth: z.number().int().min(1).max(12).nullable().optional(),
   deathDay: z.number().int().min(1).max(31).nullable().optional(),
+  /** An http(s) address; left out keeps a person's current link; '' clears it */
+  link: z
+    .string()
+    .trim()
+    .max(MAX_LINK_LENGTH)
+    .refine((v) => v === '' || isWebUrl(v), 'link must be an http:// or https:// address')
+    .optional(),
+  /** Left out keeps a person's current description; '' clears it */
+  description: z.string().trim().max(MAX_DESCRIPTION_LENGTH).optional(),
   avatar: z.string().nullable().optional(),
   isPrivate: z.boolean().default(false),
 });

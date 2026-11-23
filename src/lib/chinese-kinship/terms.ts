@@ -108,19 +108,19 @@ export function getChineseKinshipTerm(
       return getGrandparentTerm(toGender, side);
 
     case KinshipRelationshipType.GRANDCHILD:
-      return getGrandchildTerm(toGender, fromGender);
+      return getGrandchildTerm(toGender, side);
 
     case KinshipRelationshipType.GREAT_GRANDPARENT:
       return getGreatGrandparentTerm(toGender, side);
 
     case KinshipRelationshipType.GREAT_GRANDCHILD:
-      return getGreatGrandchildTerm(toGender);
+      return getGreatGrandchildTerm(toGender, side);
 
     case KinshipRelationshipType.GREAT_GREAT_GRANDPARENT:
       return getGreatGreatGrandparentTerm(toGender, side);
 
     case KinshipRelationshipType.GREAT_GREAT_GRANDCHILD:
-      return getGreatGreatGrandchildTerm(toGender);
+      return getGreatGreatGrandchildTerm(toGender, side);
 
     case KinshipRelationshipType.AUNT_UNCLE:
       if (side) {
@@ -192,7 +192,7 @@ export function getChineseKinshipTerm(
         }
         if (relationshipType.startsWith('GRANDCHILD_')) {
           const gen = parseInt(relationshipType.split('_')[1]) || 2;
-          return getDynamicGrandchildTerm(gen, toGender, fromGender);
+          return getDynamicGrandchildTerm(gen, toGender, side);
         }
       }
       return KINSHIP_TERMS.BASIC.RELATIVE;

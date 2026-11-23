@@ -19,7 +19,7 @@ export function googleProvider() {
   const redirect_uri = redirectUri();
 
   return Google({
-    clientId: secrets.googleClientId,
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: secrets.googleClientSecret,
     authorization: { params: { redirect_uri } },
     [customFetch]: (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {

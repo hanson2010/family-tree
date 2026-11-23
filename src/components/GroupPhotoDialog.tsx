@@ -1,28 +1,28 @@
 'use client';
 
 import * as React from 'react';
-import { useRef, useState } from 'react';
-import { Loader2, Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader2, Upload, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useLocale } from '@/components/LocaleProvider';
 import { GEMINI_ISSUE_KEYS } from '@/lib/i18n';
 import type { GeminiIssue } from '@/types';
-import type { ApiResponse, AvatarUploadResponse, Person, PersonFormData } from '@/types';
-
-const fieldClass =
-  'h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+import type { ApiResponse, AvatarUploadResponse, Person, PersonFormData, SavedAvatar } from '@/types';
+import { PersonAutocomplete } from '@/components/PersonAutocomplete';
 
 interface GroupPhotoDialogProps {
   isOpen: boolean;
   /** Persons the user created; only they can be given an avatar */
   persons: Person[];
+  /** Ids of persons in at least one relationship, to order suggestions */
+  linkedIds: Set<string>;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }
 
-export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPhotoDialogProps) {
+export function GroupPhotoDialog({ isOpen, persons, linkedIds, onClose, onSaved }: GroupPhotoDialogProps) {
   const { t } = useLocale();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +35,33 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
   const [assigned, setAssigned] = useState<string[]>([]);
   const [isWorking, setIsWorking] = useState(false);
   const [keepUnused, setKeepUnused] = useState(true);
+  // Faces saved earlier and not yet used; they can be deleted here and used in the person form
+  const [savedFaces, setSavedFaces] = useState<SavedAvatar[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    fetch('/api/avatars')
+      .then((r) => r.json())
+      .then((result: ApiResponse<SavedAvatar[]>) => {
+        if (!cancelled && result.success) setSavedFaces(result.data ?? []);
+      })
+      .catch(() => {
+        // The list is optional; the dialog works without it
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  const deleteSavedFace = async (id: string) => {
+    const response = await fetch(`/api/avatars/${id}`, { method: 'DELETE' });
+    if (response.ok) {
+      setSavedFaces((list) => list.filter((face) => face.id !== id));
+    } else {
+      toast({ variant: 'destructive', title: t('error'), description: t('failedToDelete') });
+    }
+  };
 
   const reset = () => {
     setFaces([]);
@@ -86,6 +113,7 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
           name: person.name,
           courtesyName: person.courtesyName,
           artName: person.artName,
+          otherNames: person.otherNames ?? [],
           gender: person.gender,
           birthYear: person.birthYear ?? null,
           birthMonth: person.birthMonth ?? null,
@@ -93,6 +121,8 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
           deathYear: person.deathYear ?? null,
           deathMonth: person.deathMonth ?? null,
           deathDay: person.deathDay ?? null,
+          link: person.link ?? '',
+          description: person.description ?? '',
           avatar,
           isPrivate: person.isPrivate,
         };
@@ -137,7 +167,6 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
     }
   };
 
-  const sortedPersons = [...persons].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
   const chosen = assigned.filter(Boolean);
   const hasRepeat = new Set(chosen).size !== chosen.length;
   const unusedCount = faces.length - chosen.length;
@@ -185,20 +214,18 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
                 <li key={i} className="flex flex-col items-center gap-2 rounded-lg border bg-background p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={face} alt="" className="h-20 w-20 rounded-full object-cover" />
-                  <select
-                    aria-label={`${t('assignPerson')} ${i + 1}`}
+                  <PersonAutocomplete
+                    labelHidden
+                    clearable
+                    label={`${t('assignPerson')} ${i + 1}`}
+                    placeholder={t('notAssignedSearch')}
                     value={assigned[i] ?? ''}
-                    onChange={(e) => setAssigned((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
-                    className={fieldClass}
-                  >
-                    <option value="">{t('notAssigned')}</option>
-                    {sortedPersons.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.birthYear ? ` (${p.birthYear})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(id) => setAssigned((prev) => prev.map((v, j) => (j === i ? id : v)))}
+                    persons={persons}
+                    linkedIds={linkedIds}
+                    excludeIds={assigned.filter((id, j) => id && j !== i)}
+                    className="w-full"
+                  />
                 </li>
               ))}
             </ul>
@@ -213,6 +240,33 @@ export function GroupPhotoDialog({ isOpen, persons, onClose, onSaved }: GroupPho
               {t('keepUnusedFaces')} ({unusedCount})
             </label>
           </>
+        )}
+
+        {savedFaces.length > 0 && (
+          <section className="space-y-2 border-t pt-3">
+            <h3 className="text-sm font-medium">
+              {t('savedFaces')} ({savedFaces.length})
+            </h3>
+            {/* Newest first; two and a half rows show (56px faces, 8px gaps, 4px padding) */}
+            <ul className="-mx-1 flex max-h-[10rem] flex-wrap gap-2 overflow-y-auto p-1">
+              {savedFaces.map((face) => (
+                <li key={face.id} className="relative shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={face.image} alt="" className="h-14 w-14 rounded-full object-cover" />
+                  <button
+                    type="button"
+                    aria-label={t('deleteSavedFace')}
+                    title={t('deleteSavedFace')}
+                    disabled={isWorking}
+                    onClick={() => deleteSavedFace(face.id)}
+                    className="absolute -right-1 -top-1 rounded-full bg-background p-0.5 text-muted-foreground shadow hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">

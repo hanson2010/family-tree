@@ -9,6 +9,7 @@ export interface ExtractedPerson {
   name: string;
   courtesyName?: string;
   artName?: string;
+  otherNames?: string[];
   gender: Gender;
   birthYear: number | null;
   birthMonth: number | null;
@@ -115,11 +116,12 @@ export function buildCommit(
 
   const newPersons = persons
     .filter((p) => p.include && p.match === 'new' && p.name.trim())
-    .map(({ key, name, courtesyName, artName, gender, birthYear, birthMonth, birthDay, deathYear, deathMonth, deathDay }) => ({
+    .map(({ key, name, courtesyName, artName, otherNames, gender, birthYear, birthMonth, birthDay, deathYear, deathMonth, deathDay }) => ({
       key,
       name: name.trim(),
       courtesyName: courtesyName?.trim() || undefined,
       artName: artName?.trim() || undefined,
+      otherNames: otherNames ?? [],
       gender,
       birthYear,
       birthMonth,

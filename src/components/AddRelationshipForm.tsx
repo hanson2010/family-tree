@@ -10,8 +10,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -24,6 +22,8 @@ import type { Relationship, RelationshipFormData, RelationshipType, Person } fro
 import { RelationshipType as RelType } from '@/types';
 import { Loader2 } from 'lucide-react';
 import { PersonAutocomplete } from '@/components/PersonAutocomplete';
+import { DateInputs, FormGrid, RowLabel, RowNote } from '@/components/FormLayout';
+import { useLocale } from '@/components/LocaleProvider';
 import { relationshipHints } from '@/lib/candidates';
 
 interface RelationshipFormProps {
@@ -39,15 +39,16 @@ interface RelationshipFormProps {
   onClose: () => void;
 }
 
+// In the order of the type list
 const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
   [RelType.PARENT_CHILD]: '父母子女',
-  [RelType.SIBLING]: '兄弟姐妹',
-  [RelType.HALF_SIBLING]: '同父异母/同母异父',
   [RelType.SPOUSE]: '配偶',
   [RelType.CONCUBINE]: '妾',
   [RelType.BETROTHED]: '订婚',
   [RelType.ADOPTIVE_PARENT]: '养父母',
   [RelType.FOSTER_PARENT]: '寄养父母',
+  [RelType.SIBLING]: '兄弟姐妹',
+  [RelType.HALF_SIBLING]: '同父异母/同母异父',
   [RelType.SWORN_SIBLING]: '结拜兄弟姐妹',
 };
 
@@ -63,8 +64,14 @@ const RELATIONSHIP_DESCRIPTIONS: Record<RelationshipType, string> = {
   [RelType.SWORN_SIBLING]: '甲和乙是结拜兄弟姐妹',
 };
 
-// Relationship types that should not be shown in the form (auto-calculated)
-const HIDDEN_RELATIONSHIP_TYPES = [RelType.SIBLING, RelType.HALF_SIBLING];
+// Siblings are also known through shared parents; a sibling relationship is for parents not in the tree
+const SIBLING_TYPES = [RelType.SIBLING, RelType.HALF_SIBLING];
+const DATE_FIELDS = {
+  start: { year: 'startYear', month: 'startMonth', day: 'startDay' },
+  end: { year: 'endYear', month: 'endMonth', day: 'endDay' },
+} as const;
+
+const SIBLING_HINT = '有共同父母的人已自动视为兄弟姐妹；父母不在家谱中时才需添加此关系。';
 
 export function AddRelationshipForm({
   isOpen,
@@ -77,6 +84,7 @@ export function AddRelationshipForm({
   onSubmit,
   onClose,
 }: RelationshipFormProps) {
+  const { t } = useLocale();
   const { toast } = useToast();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -227,123 +235,73 @@ export function AddRelationshipForm({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Person A */}
-          <PersonAutocomplete
-            value={formData.personAId}
-            onChange={(value) => handleInputChange('personAId', value)}
-            persons={persons}
-            linkedIds={linkedIds}
-            hint={hints.a}
-            excludeIds={formData.personBId ? [formData.personBId] : []}
-            placeholder="输入姓名搜索..."
-            label="甲"
-          />
+          <FormGrid>
+            <PersonAutocomplete
+              inline
+              value={formData.personAId}
+              onChange={(value) => handleInputChange('personAId', value)}
+              persons={persons}
+              linkedIds={linkedIds}
+              hint={hints.a}
+              excludeIds={formData.personBId ? [formData.personBId] : []}
+              placeholder="输入姓名搜索..."
+              label="甲"
+            />
 
-          {/* Relationship Type */}
-          <div className="space-y-2">
-            <Label htmlFor="type">关系类型</Label>
+            <RowLabel htmlFor="relationship-type">关系类型</RowLabel>
             <Select
               value={formData.type}
               onValueChange={(value) => handleInputChange('type', value as RelationshipType)}
             >
-              <SelectTrigger>
+              <SelectTrigger id="relationship-type">
                 <SelectValue placeholder="选择关系类型" />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(RELATIONSHIP_LABELS)
-                  .filter(([value]) => !HIDDEN_RELATIONSHIP_TYPES.includes(value as RelType))
-                  .map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      <div>
-                        <div>{label}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {RELATIONSHIP_DESCRIPTIONS[value as RelationshipType]}
-                        </div>
+                {Object.entries(RELATIONSHIP_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    <div>
+                      <div>{label}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {RELATIONSHIP_DESCRIPTIONS[value as RelationshipType]}
                       </div>
-                    </SelectItem>
-                  ))}
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {formData.type && (
-              <p className="text-sm text-muted-foreground">
-                {RELATIONSHIP_DESCRIPTIONS[formData.type]}
-              </p>
+              <RowNote>
+                <p>{RELATIONSHIP_DESCRIPTIONS[formData.type]}</p>
+                {SIBLING_TYPES.includes(formData.type) && <p>{SIBLING_HINT}</p>}
+              </RowNote>
             )}
-          </div>
 
-          {/* Person B */}
-          <PersonAutocomplete
-            value={formData.personBId}
-            onChange={(value) => handleInputChange('personBId', value)}
-            persons={persons}
-            linkedIds={linkedIds}
-            hint={hints.b}
-            excludeIds={formData.personAId ? [formData.personAId] : []}
-            placeholder="输入姓名搜索..."
-            label="乙"
-          />
+            <PersonAutocomplete
+              inline
+              value={formData.personBId}
+              onChange={(value) => handleInputChange('personBId', value)}
+              persons={persons}
+              linkedIds={linkedIds}
+              hint={hints.b}
+              excludeIds={formData.personAId ? [formData.personAId] : []}
+              placeholder="输入姓名搜索..."
+              label="乙"
+            />
 
-          {/* Start Date */}
-          <div className="space-y-2">
-            <Label>开始日期（可选）</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                type="number"
-                placeholder="年"
-                value={formData.startYear || ''}
-                onChange={(e) => handleInputChange('startYear', e.target.value ? parseInt(e.target.value) : null)}
-                min={0}
-                max={2100}
-              />
-              <Input
-                type="number"
-                placeholder="月"
-                value={formData.startMonth || ''}
-                onChange={(e) => handleInputChange('startMonth', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={12}
-              />
-              <Input
-                type="number"
-                placeholder="日"
-                value={formData.startDay || ''}
-                onChange={(e) => handleInputChange('startDay', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={31}
-              />
-            </div>
-          </div>
+            <RowLabel htmlFor="relationship-start">{t('startDate')}</RowLabel>
+            <DateInputs
+              id="relationship-start"
+              value={{ year: formData.startYear, month: formData.startMonth, day: formData.startDay }}
+              onChange={(part, value) => handleInputChange(DATE_FIELDS.start[part], value)}
+            />
 
-          {/* End Date */}
-          <div className="space-y-2">
-            <Label>结束日期（可选）</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                type="number"
-                placeholder="年"
-                value={formData.endYear || ''}
-                onChange={(e) => handleInputChange('endYear', e.target.value ? parseInt(e.target.value) : null)}
-                min={0}
-                max={2100}
-              />
-              <Input
-                type="number"
-                placeholder="月"
-                value={formData.endMonth || ''}
-                onChange={(e) => handleInputChange('endMonth', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={12}
-              />
-              <Input
-                type="number"
-                placeholder="日"
-                value={formData.endDay || ''}
-                onChange={(e) => handleInputChange('endDay', e.target.value ? parseInt(e.target.value) : null)}
-                min={1}
-                max={31}
-              />
-            </div>
-          </div>
+            <RowLabel htmlFor="relationship-end">{t('endDate')}</RowLabel>
+            <DateInputs
+              id="relationship-end"
+              value={{ year: formData.endYear, month: formData.endMonth, day: formData.endDay }}
+              onChange={(part, value) => handleInputChange(DATE_FIELDS.end[part], value)}
+            />
+          </FormGrid>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

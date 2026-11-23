@@ -10,8 +10,8 @@ const person = (id: string, gender: Gender, generation: number, birthYear?: numb
   birthYear,
   isPrivate: false,
   createdBy: 'test-user',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
   relativeGeneration: generation,
 });
 
@@ -22,8 +22,8 @@ const rel = (a: string, b: string, type: RelationshipType): Relationship => ({
   personBId: b,
   type,
   createdBy: 'test-user',
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 const parent = (p: string, c: string) => rel(p, c, RelationshipType.PARENT_CHILD);
 const spouse = (a: string, b: string) => rel(a, b, RelationshipType.SPOUSE);
