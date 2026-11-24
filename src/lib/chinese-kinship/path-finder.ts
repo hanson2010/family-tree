@@ -3,6 +3,7 @@ import { RelationshipType, Gender as GenderEnum } from '@/types';
 import type { RelationshipPath, RelationshipEdge } from './types';
 import { KinshipRelationshipType } from './types';
 import { analyzeRelationshipPath } from './path-analyzer';
+import { siblingKindFromParents } from '@/lib/sibling-kind';
 
 export function getGenderKey(gender: Gender): 'MALE' | 'FEMALE' | 'UNKNOWN' {
   if (gender === GenderEnum.MALE) return 'MALE';
@@ -127,10 +128,11 @@ function findDerivedSiblingRelationship(
     .filter(r => r.type === RelationshipType.PARENT_CHILD && r.personBId === toPersonId)
     .map(r => r.personAId);
 
-  const sharedParents = toParents.filter(parentId => fromParents.has(parentId));
+  // Half siblings only with positive evidence (see sibling-kind.ts); otherwise plain siblings
+  const kind = siblingKindFromParents(fromParents, toParents);
 
-  if (sharedParents.length > 0) {
-    const isHalfSibling = sharedParents.length < 2 && fromParents.size > 0 && toParents.length > 0;
+  if (kind) {
+    const isHalfSibling = kind === 'half';
 
     let isOlder: boolean | undefined;
     const fromPerson = personMap.get(fromPersonId);

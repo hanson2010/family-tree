@@ -53,6 +53,9 @@ export const translations = {
     zoomOut: '缩小',
     fitView: '适应窗口',
     self: '本人',
+    personNotFound: '找不到这个人物',
+    personNotFoundHint: '链接里的人物不存在，或是别人的私密人物。',
+    personNotFoundSignIn: '链接里的人物不存在，或是私密人物；如果是你创建的，请登录后查看。',
     private: '私人',
 
     // Details panel
@@ -202,6 +205,7 @@ export const translations = {
     baiduBaike: '百度百科',
     birthDate: '出生日期',
     deathDate: '逝世日期',
+    ageAtDeath: '享年',
     year: '年',
     month: '月',
     day: '日',
@@ -334,6 +338,9 @@ export const translations = {
     zoomOut: 'Zoom out',
     fitView: 'Fit to view',
     self: 'Self',
+    personNotFound: 'Person not found',
+    personNotFoundHint: 'The person in this link does not exist or is someone else’s private person.',
+    personNotFoundSignIn: 'The person in this link does not exist or is private; if you created them, sign in to see them.',
     private: 'Private',
 
     // Details panel
@@ -486,6 +493,7 @@ export const translations = {
     baiduBaike: 'Baidu Baike',
     birthDate: 'Birth Date',
     deathDate: 'Death Date',
+    ageAtDeath: 'Age at Death',
     year: 'Year',
     month: 'Month',
     day: 'Day',

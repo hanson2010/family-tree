@@ -8,9 +8,11 @@ import { ORDERED_MARRIAGE_TYPES, shouldSwapPartners } from '@/lib/relationship-d
 import { planMerge } from '@/lib/merge';
 import { mergeOtherNames } from '@/lib/other-names';
 import { isSamePerson } from '@/lib/person-identity';
+import { siblingKindFromParents } from '@/lib/sibling-kind';
 import { importCommitSchema, type ImportRef, type ImportResult } from '@/lib/import';
 import { avatarRef, newId, readStore, writeStore, type Store, type StoredPerson } from '@/lib/store';
-import type { Person, Relationship, RelationshipType, SavedAvatar } from '@/types';
+import type { Person, Relationship, SavedAvatar } from '@/types';
+import { RelationshipType } from '@/types';
 import { centeredAvatar, normalizeAvatar } from '@/lib/faces';
 import { personSchema, relationshipSchema } from '@/types';
 
@@ -372,6 +374,12 @@ export async function mergePersons(
     moved.forEach((r) => store.relationships.put({ ...r, updatedAt: now() }));
     // The kept person's marriages, moved or their own, keep the woman as person A
     reorderMarriages(store, keepId);
+    // The kept person may now share parents with a sibling, and their children may share parents
+    const childIds = store.relationships
+      .all()
+      .filter((r) => r.type === RelationshipType.PARENT_CHILD && r.personAId === keepId)
+      .map((r) => r.personBId);
+    removeImpliedSiblings(store, [keepId, ...childIds], uid);
     return toPerson(merged);
   });
 }
@@ -393,6 +401,39 @@ export async function deletePerson(userId: string | undefined, id: string): Prom
 
 function relationshipsOf(store: Store, personId: string): Relationship[] {
   return store.relationships.all().filter((r) => r.personAId === personId || r.personBId === personId);
+}
+
+const parentIdsOf = (store: Store, personId: string) =>
+  new Set(
+    store.relationships
+      .all()
+      .filter((r) => r.type === RelationshipType.PARENT_CHILD && r.personBId === personId)
+      .map((r) => r.personAId)
+  );
+
+/**
+ * Remove the sibling relationships of `personIds` (created by `userId`) that their parents now
+ * imply, as the app reads parents (sibling-kind.ts): a full-sibling relationship when the parents
+ * make them plain siblings, a half-sibling one when the parents show different other parents. The
+ * stored relationship then adds nothing. One that says more than the parents (half siblings whose
+ * other parents are not both recorded) stays. Returns how many were removed.
+ */
+function removeImpliedSiblings(store: Store, personIds: Iterable<string>, userId: string): number {
+  let removed = 0;
+  for (const personId of new Set(personIds)) {
+    const parents = parentIdsOf(store, personId);
+    if (parents.size === 0) continue;
+    for (const r of relationshipsOf(store, personId)) {
+      if (r.createdBy !== userId) continue;
+      if (r.type !== RelationshipType.SIBLING && r.type !== RelationshipType.HALF_SIBLING) continue;
+      const kind = siblingKindFromParents(parents, parentIdsOf(store, r.personAId === personId ? r.personBId : r.personAId));
+      if ((r.type === RelationshipType.SIBLING && kind === 'full') || (r.type === RelationshipType.HALF_SIBLING && kind === 'half')) {
+        store.relationships.remove(r.id);
+        removed++;
+      }
+    }
+  }
+  return removed;
 }
 
 /**
@@ -451,13 +492,13 @@ function findBetween(store: Store, personAId: string, personBId: string, type: R
 export async function createRelationship(
   userId: string | undefined,
   input: unknown
-): Promise<{ relationship: Relationship; existed: boolean }> {
+): Promise<{ relationship: Relationship; existed: boolean; siblingRelationshipsRemoved: number }> {
   const uid = requireUser(userId);
   const data = parse(relationshipSchema, input);
   return writeStore((store) => {
     const pair = orderedPair(store, data.type, data.personAId, data.personBId, uid);
     const [existing] = findBetween(store, pair.personAId, pair.personBId, data.type);
-    if (existing) return { relationship: existing, existed: true };
+    if (existing) return { relationship: existing, existed: true, siblingRelationshipsRemoved: 0 };
 
     const time = now();
     const relationship: Relationship = {
@@ -475,7 +516,9 @@ export async function createRelationship(
       updatedAt: time,
     };
     store.relationships.put(relationship);
-    return { relationship, existed: false };
+    const siblingRelationshipsRemoved =
+      relationship.type === RelationshipType.PARENT_CHILD ? removeImpliedSiblings(store, [relationship.personBId], uid) : 0;
+    return { relationship, existed: false, siblingRelationshipsRemoved };
   });
 }
 
@@ -508,6 +551,7 @@ export async function updateRelationship(userId: string | undefined, id: string,
       updatedAt: now(),
     };
     store.relationships.put(updated);
+    if (updated.type === RelationshipType.PARENT_CHILD) removeImpliedSiblings(store, [updated.personBId], uid);
     return updated;
   });
 }
@@ -595,6 +639,7 @@ export async function importRecords(userId: string | undefined, input: unknown):
 
     let createdRelationships = 0;
     let skipped = 0;
+    const importedChildren = new Set<string>();
     for (const r of relationships) {
       let a = resolve(r.a);
       let b = resolve(r.b);
@@ -621,8 +666,10 @@ export async function importRecords(userId: string | undefined, input: unknown):
         updatedAt: time,
       });
       createdRelationships++;
+      if (r.type === RelationshipType.PARENT_CHILD) importedChildren.add(b.id);
     }
     created.forEach((p) => store.persons.put(p));
+    removeImpliedSiblings(store, importedChildren, uid);
     return { personsCreated: created.size, relationshipsCreated: createdRelationships, relationshipsSkipped: skipped };
   });
 }

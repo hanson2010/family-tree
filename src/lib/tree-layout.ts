@@ -158,6 +158,31 @@ export function layoutFamilyTree(
       unit.members.forEach((id) => unitOf.set(id, unit));
       units.push(unit);
     };
+    // A woman married more than once stands between her husbands: the first (by marriage date,
+    // then birth) on her left, the later ones on her right. Only when none of them has another
+    // partner in this row; otherwise the usual couples below.
+    const byMarriage = (a: { r: Relationship; other: LayoutPerson }, b: { r: Relationship; other: LayoutPerson }) =>
+      (a.r.startYear ?? Number.POSITIVE_INFINITY) - (b.r.startYear ?? Number.POSITIVE_INFINITY) ||
+      (a.r.startMonth ?? 13) - (b.r.startMonth ?? 13) ||
+      (a.r.startDay ?? 32) - (b.r.startDay ?? 32) ||
+      compareByBirth(a.other, b.other);
+    row
+      .filter((p) => p.gender !== Gender.MALE)
+      .forEach((woman) => {
+        const husbands = (partnersOf.get(woman.id) ?? [])
+          .map((r) => ({ r, other: byId.get(r.personAId === woman.id ? r.personBId : r.personAId)! }))
+          .filter(({ other }) => other.gender === Gender.MALE && !unitOf.has(other.id));
+        const ids = [...new Set(husbands.map(({ other }) => other.id))];
+        if (ids.length < 2 || unitOf.has(woman.id)) return;
+        const onlyHers = ids.every((id) =>
+          (partnersOf.get(id) ?? []).every((r) => r.personAId === woman.id || r.personBId === woman.id)
+        );
+        if (!onlyHers) return;
+        const [first, ...later] = [...new Set(husbands.sort(byMarriage).map(({ other }) => other.id))];
+        const unit: Unit = { members: [first, woman.id, ...later], parentUnit: null, group: -1, x: 0 };
+        unit.members.forEach((id) => unitOf.set(id, unit));
+        units.push(unit);
+      });
     row.filter((p) => p.gender === Gender.MALE).forEach(take);
     row.forEach(take);
     return units;

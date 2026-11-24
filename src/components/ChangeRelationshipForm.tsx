@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import type { Relationship, RelationshipFormData, RelationshipType, Person } from '@/types';
-import { RelationshipType as RelType } from '@/types';
+import { RelationshipType as RelType, Gender as GenderEnum } from '@/types';
+import { compareByBirth } from '@/lib/tree-layout';
 import { Loader2, Trash2, Edit, AlertTriangle } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
 import { PersonAutocomplete } from '@/components/PersonAutocomplete';
@@ -48,6 +49,15 @@ const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
   [RelType.FOSTER_PARENT]: '寄养父母',
   [RelType.SWORN_SIBLING]: '结拜兄弟姐妹',
 };
+
+// The other kinds of relationship, in the order the details panel lists them
+const OTHER_ORDER: RelationshipType[] = [
+  RelType.ADOPTIVE_PARENT,
+  RelType.FOSTER_PARENT,
+  RelType.CONCUBINE,
+  RelType.BETROTHED,
+  RelType.SWORN_SIBLING,
+];
 
 // Types a relationship can be changed to: the same kind, so its two persons and direction stay valid
 const TYPE_FAMILIES: RelationshipType[][] = [
@@ -121,11 +131,34 @@ export function ChangeRelationshipForm({
 
       return {
         ...rel,
+        otherPerson,
         otherPersonName: otherPerson?.name || t('unknown'),
         otherPersonGender: otherPerson?.gender,
         relationshipDescription,
         isPersonA,
       };
+    }).sort((a, b) => {
+      // As the relatives in the details panel: parents (father first), spouses in marriage order,
+      // siblings and children eldest first, then the other kinds; by birth within each
+      const group = (r: typeof a) =>
+        r.type === RelType.PARENT_CHILD
+          ? r.isPersonA ? 3 : 0
+          : r.type === RelType.SPOUSE
+            ? 1
+            : r.type === RelType.SIBLING || r.type === RelType.HALF_SIBLING
+              ? 2
+              : 4 + OTHER_ORDER.indexOf(r.type);
+      const gender = (r: typeof a) => (r.otherPersonGender === GenderEnum.MALE ? 0 : r.otherPersonGender === GenderEnum.FEMALE ? 1 : 2);
+      return (
+        group(a) - group(b) ||
+        (group(a) === 0 ? gender(a) - gender(b) : 0) ||
+        (group(a) === 1
+          ? (a.startYear ?? Infinity) - (b.startYear ?? Infinity) ||
+            (a.startMonth ?? 13) - (b.startMonth ?? 13) ||
+            (a.startDay ?? 32) - (b.startDay ?? 32)
+          : 0) ||
+        (a.otherPerson && b.otherPerson ? compareByBirth(a.otherPerson, b.otherPerson) : 0)
+      );
     });
   }, [selectedPersonId, relationships, personMap, t]);
 

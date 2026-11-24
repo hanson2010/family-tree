@@ -351,7 +351,7 @@ with search_persons before creating them; creating a public person that matches 
     'create_relationship',
     {
       title: 'Create a relationship',
-      description: `Link two persons. If the same relationship exists already, it is returned instead.\n${TYPE_HELP}`,
+      description: `Link two persons. If the same relationship exists already, it is returned instead. Children sharing a parent are siblings without a SIBLING relationship; they are half siblings only when each also has a different other parent recorded. A new PARENT_CHILD relationship removes the child's sibling relationships (yours) that the parents now imply in this way.\n${TYPE_HELP}`,
       inputSchema: z.object({
         personAId: z.string(),
         personBId: z.string(),
@@ -361,8 +361,12 @@ with search_persons before creating them; creating a public person that matches 
     },
     async ({ type, ...input }) =>
       run(async () => {
-        const { relationship, existed } = await createRelationship(userId, { ...input, type: TYPES[type] });
-        return { existed, relationship: relationshipSummary(relationship, await nameMap()) };
+        const { relationship, existed, siblingRelationshipsRemoved } = await createRelationship(userId, { ...input, type: TYPES[type] });
+        return {
+          existed,
+          relationship: relationshipSummary(relationship, await nameMap()),
+          ...(siblingRelationshipsRemoved ? { siblingRelationshipsRemoved } : {}),
+        };
       })
   );
 

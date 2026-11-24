@@ -105,6 +105,7 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
 ## Usage
 
 - Signed in, the sidebar offers **Add Person**, **Add Relationship**, **Add Family Relationships**, **Import from text or scans** and **Avatars from a group photo**.
+- Each person has an address, `/person/<id>`, shown in the address bar for the person at the center: refresh, bookmark or share it, and Back returns to the person before. A public person's link shows their name, years, names and avatar in link previews; a private person's link works only for their creator, signed in, and its preview shows nothing about them.
 - Click a person to select them; double-click one you created to edit them. The right panel shows their details and relatives, and lets you change their relationships, merge another of your persons into them, or delete them with their relationships.
 - Search (Enter or **Search**) finds persons whose name, 字, 号 or other names contain the text, and shows them on the canvas: matches in the same family form one tree, joined through faded persons; unrelated matches stand side by side. At most 100 matches are shown, the earliest born. Click a person to see their details; clear the search to return to the family tree around them.
 - The gender and "living in year" filters keep the tree connected: persons needed to link the matches are shown faded with a dashed ring. They also narrow search results.

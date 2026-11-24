@@ -15,6 +15,7 @@ import { EXTENDED_KINSHIP_TERMS } from './constants';
 import { householdTerm } from './wives-concubines';
 import { bloodTerm } from './blood-terms';
 import { siblingSpouseTerm } from './sibling-spouse-terms';
+import { descendantSpouseTerm } from './descendant-spouse-terms';
 
 export type { KinshipContext, RelationshipPath, RelationshipEdge, PathNode, GenderKey, KinshipSide, GrandparentSide } from './types';
 export { KinshipRelationshipType } from './types';
@@ -62,6 +63,11 @@ export function calculateDetailedRelationship(
   const siblingSpouse = siblingSpouseTerm(fromPersonId, toPersonId, relationships, personMap);
   if (siblingSpouse) {
     return { term: siblingSpouse.term, path: null, context: { generationDiff: siblingSpouse.generations } };
+  }
+  // A grandchild's or great-grandchild's spouse: 孙媳, 外孙女婿, 曾孙媳; and 岳祖父 the other way
+  const descendantSpouse = descendantSpouseTerm(fromPersonId, toPersonId, relationships, personMap);
+  if (descendantSpouse) {
+    return { term: descendantSpouse.term, path: null, context: { generationDiff: descendantSpouse.generations } };
   }
   // Nephews and nieces, cousins and their children, parents' cousins: 堂 or 表
   const blood = bloodTerm(fromPersonId, toPersonId, relationships, personMap);

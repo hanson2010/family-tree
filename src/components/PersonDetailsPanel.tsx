@@ -10,6 +10,7 @@ import { Gender, RelationshipType } from '@/types';
 import type { TranslationKey } from '@/lib/i18n';
 import { formatOtherNames } from '@/lib/other-names';
 import { WebLink } from '@/components/WebLink';
+import { compareByBirth } from '@/lib/tree-layout';
 import { GitBranch, GitMerge, Lock, MousePointerClick, Pencil, Trash2 } from 'lucide-react';
 
 interface PersonDetailsPanelProps {
@@ -39,7 +40,37 @@ const OTHER_TYPE_LABELS: Partial<Record<RelationshipType, TranslationKey>> = {
   [RelationshipType.SWORN_SIBLING]: 'swornSibling',
 };
 
-const byBirthYear = (a: Person, b: Person) => (a.birthYear ?? Infinity) - (b.birthYear ?? Infinity);
+/** Other relations by type, then by birth within a type */
+const OTHER_TYPE_ORDER: RelationshipType[] = [
+  RelationshipType.ADOPTIVE_PARENT,
+  RelationshipType.FOSTER_PARENT,
+  RelationshipType.CONCUBINE,
+  RelationshipType.BETROTHED,
+  RelationshipType.SWORN_SIBLING,
+];
+
+/** Earliest start date first; a relationship without one goes last */
+/**
+ * Age at death, when both years are known. In Chinese it is 享年 in 虚岁, as genealogies count it
+ * (the death year minus the birth year, plus one); in English, completed years, exact when both
+ * full dates are known and "about" otherwise.
+ */
+function ageAtDeath(p: Person, locale: string): string | null {
+  if (p.birthYear == null || p.deathYear == null || p.deathYear < p.birthYear) return null;
+  if (locale === 'zh') return `${p.deathYear - p.birthYear + 1} 岁`;
+  const exact = p.birthMonth != null && p.birthDay != null && p.deathMonth != null && p.deathDay != null;
+  if (!exact) return `about ${p.deathYear - p.birthYear}`;
+  const beforeBirthday = p.deathMonth! < p.birthMonth! || (p.deathMonth === p.birthMonth && p.deathDay! < p.birthDay!);
+  return String(p.deathYear - p.birthYear - (beforeBirthday ? 1 : 0));
+}
+
+const byStartDate = (a: Relationship, b: Relationship) =>
+  (a.startYear ?? Infinity) - (b.startYear ?? Infinity) ||
+  (a.startMonth ?? 13) - (b.startMonth ?? 13) ||
+  (a.startDay ?? 32) - (b.startDay ?? 32);
+
+/** Father before mother (unknown gender last), then by birth */
+const genderRank = (p: Person) => (p.gender === Gender.MALE ? 0 : p.gender === Gender.FEMALE ? 1 : 2);
 
 export function PersonDetailsPanel({
   person,
@@ -61,10 +92,10 @@ export function PersonDetailsPanel({
 
     const byId = new Map(persons.map((p) => [p.id, p]));
     const parents: Person[] = [];
-    const spouses: Person[] = [];
+    const spouses: { person: Person; rel: Relationship }[] = [];
     const children: Person[] = [];
     const siblings = new Map<string, Person>();
-    const others: RelativeGroup['members'] = [];
+    const others: { person: Person; rel: Relationship }[] = [];
 
     for (const rel of relationships) {
       const isA = rel.personAId === person.id;
@@ -78,16 +109,14 @@ export function PersonDetailsPanel({
           (isA ? children : parents).push(other);
           break;
         case RelationshipType.SPOUSE:
-          spouses.push(other);
+          spouses.push({ person: other, rel });
           break;
         case RelationshipType.SIBLING:
         case RelationshipType.HALF_SIBLING:
           siblings.set(other.id, other);
           break;
-        default: {
-          const labelKey = OTHER_TYPE_LABELS[rel.type];
-          others.push({ person: other, note: labelKey ? t(labelKey) : rel.type });
-        }
+        default:
+          others.push({ person: other, rel });
       }
     }
 
@@ -103,12 +132,27 @@ export function PersonDetailsPanel({
     // Each person once per group, even if the same relationship is stored more than once
     const toMembers = (list: Person[]) =>
       list.filter((p, i) => list.findIndex((q) => q.id === p.id) === i).map((p) => ({ person: p }));
+    // Parents: father, then mother. Spouses: in marriage order. Siblings and children: eldest
+    // first. Others: by kind of relationship, then by birth.
+    parents.sort((a, b) => genderRank(a) - genderRank(b) || compareByBirth(a, b));
+    spouses.sort((a, b) => byStartDate(a.rel, b.rel) || compareByBirth(a.person, b.person));
+    others.sort(
+      (a, b) =>
+        OTHER_TYPE_ORDER.indexOf(a.rel.type) - OTHER_TYPE_ORDER.indexOf(b.rel.type) ||
+        compareByBirth(a.person, b.person)
+    );
     return [
       { title: t('parents'), members: toMembers(parents) },
-      { title: t('spouses'), members: toMembers(spouses) },
-      { title: t('siblings'), members: toMembers(Array.from(siblings.values()).sort(byBirthYear)) },
-      { title: t('children'), members: toMembers(children.sort(byBirthYear)) },
-      { title: t('otherRelations'), members: others },
+      { title: t('spouses'), members: toMembers(spouses.map((s) => s.person)) },
+      { title: t('siblings'), members: toMembers(Array.from(siblings.values()).sort(compareByBirth)) },
+      { title: t('children'), members: toMembers(children.sort(compareByBirth)) },
+      {
+        title: t('otherRelations'),
+        members: others.map(({ person: other, rel }) => {
+          const labelKey = OTHER_TYPE_LABELS[rel.type];
+          return { person: other, note: labelKey ? t(labelKey) : rel.type };
+        }),
+      },
     ].filter((group) => group.members.length > 0);
   }, [person, persons, relationships, t]);
 
@@ -145,6 +189,7 @@ export function PersonDetailsPanel({
     { label: t('gender'), value: genderLabel },
     { label: t('birthDate'), value: birthDate },
     { label: t('deathDate'), value: deathDate },
+    { label: t('ageAtDeath'), value: ageAtDeath(person, locale) },
     { label: t('link'), value: person.link ? <WebLink href={person.link} /> : null },
   ].filter((fact) => fact.value);
 
