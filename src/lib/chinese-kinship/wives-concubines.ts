@@ -1,4 +1,5 @@
 import type { Person, Relationship } from '@/types';
+import { compareUnionStart } from '@/lib/marriage-order';
 import { Gender, RelationshipType } from '@/types';
 
 /**
@@ -129,13 +130,12 @@ export function householdTerm(
  * Whether the woman of union `a` joined the household before the woman of union `b`: by the
  * start year of each union, else by birth year; undefined when neither tells.
  */
-function joinedFirst(a: Relationship, b: Relationship, personA?: Person, personB?: Person): boolean | undefined {
-  const compare = (x?: number | null, y?: number | null) => (x != null && y != null && x !== y ? x < y : undefined);
-  return (
-    compare(a.startYear, b.startYear) ??
-    (a.startYear === b.startYear && a.startYear != null
-      ? compare(a.startMonth, b.startMonth) ?? compare(a.startDay, b.startDay)
-      : undefined) ??
-    compare(personA?.birthYear, personB?.birthYear)
-  );
+export function joinedFirst(
+  a: Relationship,
+  b: Relationship,
+  personA?: Pick<Person, 'birthYear'>,
+  personB?: Pick<Person, 'birthYear'>
+): boolean | undefined {
+  const order = compareUnionStart(a, b, personA, personB);
+  return order === 0 ? undefined : order < 0;
 }

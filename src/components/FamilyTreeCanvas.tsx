@@ -28,6 +28,8 @@ interface FamilyTreeCanvasProps {
    * person. Choosing a person then shows their details without moving the view.
    */
   forestPositions?: Map<string, { x: number; y: number }> | null;
+  /** Where the search results are first viewed (in `forestPositions` terms) */
+  forestFocus?: { x: number; y: number } | null;
   onSelectPerson: (personId: string) => void;
   onEditPerson?: (person: Person) => void;
 }
@@ -102,7 +104,12 @@ interface TreeLink {
   path: () => string;
 }
 
-function linkStyle(type: RelationshipType): { stroke: string; width: number; dash: string | null } {
+/**
+ * How each relationship's line is drawn. Lines have round caps, which lengthen each dash by the
+ * line width and shorten each gap by as much; `legendDash` is the pattern in the legend's sample.
+ * The three partner lines differ in pattern as well: wife solid, concubine dashed, betrothed dotted.
+ */
+function linkStyle(type: RelationshipType): { stroke: string; width: number; dash: string | null; legendDash?: string } {
   switch (type) {
     case RelationshipType.PARENT_CHILD:
       return { stroke: '#8C857B', width: 1.5, dash: null };
@@ -112,9 +119,9 @@ function linkStyle(type: RelationshipType): { stroke: string; width: number; das
     case RelationshipType.SPOUSE:
       return { stroke: BRAND, width: 2, dash: null };
     case RelationshipType.BETROTHED:
-      return { stroke: BRAND, width: 1.5, dash: '2,4' };
+      return { stroke: BRAND, width: 2, dash: '0.1,5', legendDash: '0.1,3.5' };
     case RelationshipType.CONCUBINE:
-      return { stroke: '#4D7C5B', width: 2, dash: '6,4' };
+      return { stroke: '#4D7C5B', width: 2, dash: '7,7', legendDash: '4,4' };
     default:
       return { stroke: '#B9B1A6', width: 1.5, dash: '3,5' };
   }
@@ -269,6 +276,7 @@ export function FamilyTreeCanvas({
   selectedPersonId,
   recenterRequest = 0,
   forestPositions = null,
+  forestFocus = null,
   onSelectPerson,
   onEditPerson,
 }: FamilyTreeCanvasProps) {
@@ -281,6 +289,8 @@ export function FamilyTreeCanvas({
   const positionsRef = useRef(new Map<string, { x: number; y: number }>());
   // The center person and the persons drawn when the view was last aimed
   const lastViewRef = useRef<string | null>(null);
+  // Where the persons drawn are heading, so a view aimed while they glide aims at the end
+  const targetRef = useRef(new Map<string, { x: number; y: number }>());
 
   const [isEmpty, setIsEmpty] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -290,13 +300,15 @@ export function FamilyTreeCanvas({
   const selfLabel = t('self');
 
   /**
-   * Show the whole tree, zoomed out no further than the minimum text size, with the person
-   * `focusId` (at their position in `positions`) as close to the middle as possible. The view
+   * Show the whole tree, zoomed out no further than the minimum text size, with `focus` (a person,
+   * at their position in `positions`, or a point) as close to the middle as possible; a point is
+   * for search results, which are centered as a whole when they fit. The view
    * stops where the tree's edge meets the canvas edge: a tree that fits stays fully in view,
-   * and a larger one never shows empty space beyond its edge.
+   * and a larger one never shows empty space beyond its edge. Positions are where the persons
+   * are heading unless given.
    */
   const centerOn = useCallback((
-    focusId: string | null,
+    focus: string | { x: number; y: number } | null,
     duration: number,
     positions?: Map<string, { x: number; y: number }>
   ) => {
@@ -308,7 +320,8 @@ export function FamilyTreeCanvas({
     const { width, height } = svgEl.getBoundingClientRect();
     if (!width || !height) return;
 
-    const points = nodes.map((n) => positions?.get(n.id) ?? { x: n.x ?? 0, y: n.y ?? 0 });
+    const target = positions ?? targetRef.current;
+    const points = nodes.map((n) => target.get(n.id) ?? { x: n.x ?? 0, y: n.y ?? 0 });
     const minX = Math.min(...points.map((p) => p.x)) - TREE_PAD_X;
     const maxX = Math.max(...points.map((p) => p.x)) + TREE_PAD_X;
     const minY = Math.min(...points.map((p) => p.y)) - TREE_PAD_TOP;
@@ -325,9 +338,15 @@ export function FamilyTreeCanvas({
       const b = high - viewSize / (2 * k);
       return Math.min(Math.max(value, Math.min(a, b)), Math.max(a, b));
     };
-    const focusIndex = Math.max(0, nodes.findIndex((n) => n.id === focusId));
-    const cx = clampCenter(points[focusIndex].x, minX, maxX, viewWidth);
-    const cy = clampCenter(points[focusIndex].y, minY, maxY, viewHeight);
+    let at: { x: number; y: number };
+    if (focus !== null && typeof focus === 'object') {
+      const fits = fitScale >= k;
+      at = fits ? { x: (minX + maxX) / 2, y: (minY + maxY) / 2 } : focus;
+    } else {
+      at = points[Math.max(0, nodes.findIndex((n) => n.id === focus))];
+    }
+    const cx = clampCenter(at.x, minX, maxX, viewWidth);
+    const cy = clampCenter(at.y, minY, maxY, viewHeight);
 
     const transform = d3.zoomIdentity.translate(width / 2 - k * cx, height / 2 - k * cy).scale(k);
     const svg = d3.select(svgEl);
@@ -374,6 +393,8 @@ export function FamilyTreeCanvas({
     const visibleIds = new Set(visiblePersons.map((p) => p.id));
     // Search results keep their view while persons are chosen in them
     const viewKey = `${isForest ? 'forest' : centerId}|${[...visibleIds].sort().join(',')}`;
+    // Search results are viewed from their largest tree, not from whoever happens to be selected
+    const aim = isForest && forestFocus ? forestFocus : centerId;
 
     const saved = positionsRef.current;
     const isFreshLayout = visiblePersons.every((p) => !saved.has(p.id));
@@ -382,6 +403,7 @@ export function FamilyTreeCanvas({
       (rel) => visibleIds.has(rel.personAId) && visibleIds.has(rel.personBId)
     );
     const settled = isForest ? forestPositions : layoutFamilyTree(visiblePersons, visibleRelationships).positions;
+    targetRef.current = settled;
     // Kinship terms only for relatives within 四代 of the selected person (and their spouses)
     const closeIds = !isForest && selectedPersonId ? closeKinIds(selectedPersonId, relationships) : null;
 
@@ -588,7 +610,7 @@ export function FamilyTreeCanvas({
 
     // Marriage order: a numbered badge on each marriage line, near the end of the partner whose
     // marriages it counts (by start date, for persons married more than once)
-    const ordinals = marriageOrdinals(relationships);
+    const ordinals = marriageOrdinals(relationships, new Map(kinshipPersons.map((p) => [p.id, p])));
     const pathById = new Map<string, SVGPathElement>();
     link.each(function (d) {
       pathById.set(d.id, this as SVGPathElement);
@@ -656,11 +678,11 @@ export function FamilyTreeCanvas({
 
     if (isFreshLayout) {
       render();
-      centerOn(centerId, 0);
+      centerOn(aim, 0);
     } else {
       // When the center person or the persons drawn change (e.g. a filter), aim the view at the
       // new layout, then glide everyone there
-      if (lastViewRef.current !== viewKey) centerOn(centerId, MOVE_DURATION, settled);
+      if (lastViewRef.current !== viewKey) centerOn(aim, MOVE_DURATION, settled);
       const place = (progress: number) => {
         nodes.forEach((n) => {
           const to = settled.get(n.id)!;
@@ -683,7 +705,7 @@ export function FamilyTreeCanvas({
       glide?.stop();
       svg.interrupt();
     };
-  }, [persons, connectorIds, kinshipPersons, relationships, selectedPersonId, forestPositions, onSelectPerson, onEditPerson, selfLabel, centerOn]);
+  }, [persons, connectorIds, kinshipPersons, relationships, selectedPersonId, forestPositions, forestFocus, onSelectPerson, onEditPerson, selfLabel, centerOn]);
 
   // The selected person chosen again (from search, say): glide back to them
   const selectedRef = useRef(selectedPersonId);
@@ -718,6 +740,7 @@ export function FamilyTreeCanvas({
             { type: RelationshipType.PARENT_CHILD, label: t('parentChild') },
             { type: RelationshipType.SPOUSE, label: t('spouse') },
             { type: RelationshipType.CONCUBINE, label: t('concubine') },
+            { type: RelationshipType.BETROTHED, label: t('betrothed') },
             { type: RelationshipType.SIBLING, label: t('otherRelations') },
           ].map(({ type, label }) => {
             const style = linkStyle(type);
@@ -725,13 +748,14 @@ export function FamilyTreeCanvas({
               <div key={type} className="flex items-center gap-2">
                 <svg width="16" height="6" aria-hidden="true">
                   <line
-                    x1="0"
+                    x1="1"
                     y1="3"
-                    x2="16"
+                    x2="15"
                     y2="3"
                     stroke={style.stroke}
                     strokeWidth="2"
-                    strokeDasharray={style.dash ? '3,2' : undefined}
+                    strokeLinecap="round"
+                    strokeDasharray={style.dash ? (style.legendDash ?? '3,4') : undefined}
                   />
                 </svg>
                 <span>{label}</span>
@@ -766,7 +790,7 @@ export function FamilyTreeCanvas({
         {[
           { label: t('zoomIn'), icon: Plus, onClick: () => zoomBy(1.3) },
           { label: t('zoomOut'), icon: Minus, onClick: () => zoomBy(1 / 1.3) },
-          { label: t('fitView'), icon: Maximize2, onClick: () => centerOn(selectedPersonId, 400) },
+          { label: t('fitView'), icon: Maximize2, onClick: () => centerOn(forestPositions && forestFocus ? forestFocus : selectedPersonId, 400) },
         ].map(({ label, icon: Icon, onClick }) => (
           <button
             key={label}

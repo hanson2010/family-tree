@@ -11,7 +11,8 @@ import type { TranslationKey } from '@/lib/i18n';
 import { formatOtherNames } from '@/lib/other-names';
 import { WebLink } from '@/components/WebLink';
 import { compareByBirth } from '@/lib/tree-layout';
-import { GitBranch, GitMerge, Lock, MousePointerClick, Pencil, Trash2 } from 'lucide-react';
+import { zodiacAnimal, zodiacEmoji } from '@/lib/zodiac';
+import { GitBranch, GitMerge, Lock, MousePointerClick, Network, Pencil, Trash2 } from 'lucide-react';
 
 interface PersonDetailsPanelProps {
   person: Person | null;
@@ -25,6 +26,8 @@ interface PersonDetailsPanelProps {
   /** Merge another person into this one */
   onMerge?: (person: Person) => void;
   onChangeRelationships?: (person: Person) => void;
+  /** Leave the search and show this person's family tree; given while a search is shown */
+  onShowFamily?: (person: Person) => void;
 }
 
 interface RelativeGroup {
@@ -82,6 +85,7 @@ export function PersonDetailsPanel({
   onDelete,
   onMerge,
   onChangeRelationships,
+  onShowFamily,
 }: PersonDetailsPanelProps) {
   const { t, locale } = useLocale();
   const { status } = useSession();
@@ -182,12 +186,25 @@ export function PersonDetailsPanel({
   const genderLabel =
     person.gender === Gender.MALE ? t('male') : person.gender === Gender.FEMALE ? t('female') : t('unknown');
 
+  const zodiac = zodiacAnimal(person, locale);
+
   const facts: { label: string; value: React.ReactNode }[] = [
     { label: t('courtesyName'), value: person.courtesyName },
     { label: t('artName'), value: person.artName },
     { label: t('otherNames'), value: formatOtherNames(person.otherNames) },
     { label: t('gender'), value: genderLabel },
     { label: t('birthDate'), value: birthDate },
+    {
+      label: t('zodiac'),
+      value: zodiac && (
+        <>
+          <span aria-hidden="true" className="mr-1.5">
+            {zodiacEmoji(person)}
+          </span>
+          {zodiac}
+        </>
+      ),
+    },
     { label: t('deathDate'), value: deathDate },
     { label: t('ageAtDeath'), value: ageAtDeath(person, locale) },
     { label: t('link'), value: person.link ? <WebLink href={person.link} /> : null },
@@ -213,6 +230,13 @@ export function PersonDetailsPanel({
           )}
         </div>
       </div>
+
+      {onShowFamily && (
+        <Button size="sm" className="w-full" onClick={() => onShowFamily(person)}>
+          <Network className="mr-2 h-4 w-4" />
+          {t('showFamily')}
+        </Button>
+      )}
 
       {/* Facts */}
       <dl className="divide-y rounded-lg border bg-card text-sm">

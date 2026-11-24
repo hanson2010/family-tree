@@ -1,4 +1,5 @@
-import type { Person, Relationship } from '@/types';
+import { RelationshipType, type Person, type Relationship } from '@/types';
+import { siblingKindFromParents } from '@/lib/sibling-kind';
 import { GenerationCalculator } from '@/lib/generation-calculator';
 import { connectFiltered } from '@/lib/tree-filter';
 import { DEFAULT_LAYOUT_OPTIONS, compareByBirth, layoutFamilyTree, type LayoutOptions } from '@/lib/tree-layout';
@@ -20,15 +21,129 @@ export interface SearchForest {
   connectorIds: Set<string>;
   /** Where each drawn person (match or connector) goes */
   positions: Map<string, { x: number; y: number }>;
+  /** Where to look first: the middle of the largest tree, or of the single matches without trees */
+  focus: { x: number; y: number };
 }
 
-/** Whether a person's name, 字, 号 or one of their other names contains the query (any case) */
-export function matchesQuery(person: Pick<Person, 'name' | 'courtesyName' | 'artName' | 'otherNames'>, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return false;
-  return [person.name, person.courtesyName, person.artName, ...(person.otherNames ?? [])].some((n) =>
-    n?.toLowerCase().includes(q)
-  );
+/** The strings of a search: the query split at 、 and commas (，or ,), in lower case, without repeats */
+export function searchTerms(query: string): string[] {
+  return [...new Set(query.split(/[、，,]/).map((term) => term.trim().toLowerCase()).filter(Boolean))];
+}
+
+type Names = Pick<Person, 'name' | 'courtesyName' | 'artName' | 'otherNames'>;
+
+/** The terms that a person's name, 字, 号 or one of their other names contains (any case) */
+function termsMatched(person: Names, terms: string[]): string[] {
+  const names = [person.name, person.courtesyName, person.artName, ...(person.otherNames ?? [])]
+    .filter((n): n is string => !!n)
+    .map((n) => n.toLowerCase());
+  return terms.filter((term) => names.some((n) => n.includes(term)));
+}
+
+/** Whether a person's name, 字, 号 or one of their other names contains one of the query's strings */
+export function matchesQuery(person: Names, query: string): boolean {
+  return termsMatched(person, searchTerms(query)).length > 0;
+}
+
+/** Each person's relatives through the relationships between `persons` */
+function neighboursOf(persons: Person[], relationships: Relationship[]): Map<string, string[]> {
+  const ids = new Set(persons.map((p) => p.id));
+  const neighbours = new Map<string, string[]>();
+  for (const r of relationships) {
+    if (!ids.has(r.personAId) || !ids.has(r.personBId)) continue;
+    neighbours.set(r.personAId, [...(neighbours.get(r.personAId) ?? []), r.personBId]);
+    neighbours.set(r.personBId, [...(neighbours.get(r.personBId) ?? []), r.personAId]);
+  }
+  return neighbours;
+}
+
+/** The families (persons connected through relationships) of `ids`, one per family, in order */
+function familiesOf(ids: string[], neighbours: Map<string, string[]>): Set<string>[] {
+  const seen = new Set<string>();
+  const families: Set<string>[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const family = new Set<string>([id]);
+    const queue = [id];
+    while (queue.length > 0) {
+      for (const next of neighbours.get(queue.shift()!) ?? []) {
+        if (!family.has(next)) {
+          family.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    family.forEach((member) => seen.add(member));
+    families.push(family);
+  }
+  return families;
+}
+
+/**
+ * The persons a search finds among `candidates` (those passing the filters): each one matching one
+ * of the query's strings. With several strings (「贾政、王夫人」), only the matches in families where
+ * every string is matched are kept, by one person or several; families are formed through all
+ * `persons` and their `relationships`.
+ */
+export function searchMatches(
+  persons: Person[],
+  relationships: Relationship[],
+  candidates: Person[],
+  query: string
+): Person[] {
+  const terms = searchTerms(query);
+  const matched = new Map<string, string[]>();
+  for (const person of candidates) {
+    const found = termsMatched(person, terms);
+    if (found.length > 0) matched.set(person.id, found);
+  }
+  const matches = candidates.filter((p) => matched.has(p.id));
+  if (terms.length < 2) return matches;
+
+  const kept = new Set<string>();
+  for (const family of familiesOf([...matched.keys()], neighboursOf(persons, relationships))) {
+    const inFamily = [...matched.keys()].filter((id) => family.has(id));
+    const found = new Set(inFamily.flatMap((id) => matched.get(id)!));
+    if (found.size === terms.length) inFamily.forEach((id) => kept.add(id));
+  }
+  return matches.filter((p) => kept.has(p.id));
+}
+
+/**
+ * Add to a tree the parents of half siblings in it: two persons drawn with a shared parent who are
+ * 同父异母 or 同母异父 (sibling-kind.ts) would otherwise look like full siblings, so each one's
+ * other parent is drawn too, as a connector. Returns the persons added.
+ */
+function addHalfSiblingParents(ids: Set<string>, relationships: Relationship[]): string[] {
+  const parentsOf = new Map<string, string[]>();
+  for (const r of relationships) {
+    if (r.type === RelationshipType.PARENT_CHILD) {
+      parentsOf.set(r.personBId, [...(parentsOf.get(r.personBId) ?? []), r.personAId]);
+    }
+  }
+  const childrenIn = new Map<string, string[]>();
+  for (const id of ids) {
+    for (const parentId of parentsOf.get(id) ?? []) {
+      if (ids.has(parentId)) childrenIn.set(parentId, [...(childrenIn.get(parentId) ?? []), id]);
+    }
+  }
+  const added: string[] = [];
+  for (const children of childrenIn.values()) {
+    children.forEach((a, i) =>
+      children.slice(i + 1).forEach((b) => {
+        const parentsA = parentsOf.get(a) ?? [];
+        const parentsB = parentsOf.get(b) ?? [];
+        if (siblingKindFromParents(parentsA, parentsB) !== 'half') return;
+        for (const parentId of [...parentsA, ...parentsB]) {
+          if (!ids.has(parentId)) {
+            ids.add(parentId);
+            added.push(parentId);
+          }
+        }
+      })
+    );
+  }
+  return added;
 }
 
 /** Space between trees, and between the trees and the grid of single matches */
@@ -49,30 +164,11 @@ export function searchForest(
   const byId = new Map(persons.map((p) => [p.id, p]));
   const usable = relationships.filter((r) => byId.has(r.personAId) && byId.has(r.personBId));
 
-  const neighbours = new Map<string, string[]>();
-  usable.forEach((r) => {
-    neighbours.set(r.personAId, [...(neighbours.get(r.personAId) ?? []), r.personBId]);
-    neighbours.set(r.personBId, [...(neighbours.get(r.personBId) ?? []), r.personAId]);
-  });
-
   // The family (connected group of persons) of each match
-  const familyOf = new Map<string, number>();
-  const families: Set<string>[] = [];
-  for (const match of shown) {
-    if (familyOf.has(match.id)) continue;
-    const family = new Set<string>([match.id]);
-    const queue = [match.id];
-    while (queue.length > 0) {
-      for (const next of neighbours.get(queue.shift()!) ?? []) {
-        if (!family.has(next)) {
-          family.add(next);
-          queue.push(next);
-        }
-      }
-    }
-    family.forEach((id) => familyOf.set(id, families.length));
-    families.push(family);
-  }
+  const families = familiesOf(
+    shown.map((p) => p.id),
+    neighboursOf(persons, usable)
+  );
 
   // One tree per family holding two or more matches; the rest are single matches
   const trees: { rootId: string; ids: Set<string>; connectorIds: Set<string>; matches: number }[] = [];
@@ -84,6 +180,7 @@ export function searchForest(
       return;
     }
     const tree = connectFiltered(inFamily[0].id, family, new Set(inFamily.map((p) => p.id)), usable);
+    addHalfSiblingParents(tree.ids, usable).forEach((id) => tree.connectorIds.add(id));
     trees.push({ rootId: inFamily[0].id, ...tree, matches: inFamily.length });
   });
   trees.sort((a, b) => b.matches - a.matches || b.ids.size - a.ids.size);
@@ -91,6 +188,7 @@ export function searchForest(
   const positions = new Map<string, { x: number; y: number }>();
   const connectorIds = new Set<string>();
   let cursor = 0;
+  let focus: { x: number; y: number } | null = null;
   for (const tree of trees) {
     const treeRelationships = usable.filter((r) => tree.ids.has(r.personAId) && tree.ids.has(r.personBId));
     const treePersons = [...tree.ids].map((id) => byId.get(id)!);
@@ -104,7 +202,9 @@ export function searchForest(
     const minX = Math.min(...points.map((p) => p.x));
     const maxX = Math.max(...points.map((p) => p.x));
     const minY = Math.min(...points.map((p) => p.y));
+    const maxY = Math.max(...points.map((p) => p.y));
     layout.forEach((p, id) => positions.set(id, { x: p.x - minX + cursor, y: p.y - minY }));
+    focus ??= { x: cursor + (maxX - minX) / 2, y: (maxY - minY) / 2 };
     tree.connectorIds.forEach((id) => connectorIds.add(id));
     cursor += maxX - minX + TREE_GAP;
   }
@@ -118,5 +218,13 @@ export function searchForest(
     });
   });
 
-  return { total: matches.length, matchIds, connectorIds, positions };
+  if (!focus) {
+    const rows = Math.ceil(singles.length / columns);
+    focus = {
+      x: cursor + ((Math.min(columns, singles.length) - 1) * options.nodeSpacing * 1.4) / 2,
+      y: (Math.max(rows, 1) - 1) * options.generationHeight / 2,
+    };
+  }
+
+  return { total: matches.length, matchIds, connectorIds, positions, focus };
 }

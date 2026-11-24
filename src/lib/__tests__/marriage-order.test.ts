@@ -72,6 +72,18 @@ describe('marriageOrdinals', () => {
     expect(result.has('undated')).toBe(false);
   });
 
+  it('uses the partners’ birth years when a month is missing within the same year', () => {
+    const result = marriageOrdinals(
+      [
+        marriage('wife', '贾琏', '王熙凤', [1722]),
+        marriage('qiutong', '贾琏', '秋桐', [1733], RelationshipType.CONCUBINE),
+        marriage('erjie', '贾琏', '尤二姐', [1733, 7], RelationshipType.CONCUBINE),
+      ],
+      new Map([['秋桐', { birthYear: 1717 }], ['尤二姐', { birthYear: 1715 }]])
+    );
+    expect([result.get('wife'), result.get('erjie'), result.get('qiutong')].map((o) => o?.[0].ordinal)).toEqual([1, 2, 3]);
+  });
+
   it('numbers both ends when both partners married more than once', () => {
     const result = marriageOrdinals([
       marriage('herFirst', 'widow', 'h1', [1900]),

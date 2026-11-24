@@ -1,11 +1,13 @@
 import type { Person, Relationship } from '@/types';
 import { Gender, RelationshipType } from '@/types';
+import { orderUnions } from '@/lib/marriage-order';
 
 /**
  * Family tree layout: one row per generation, in a fixed order.
  *
  * - A couple sits together, the husband on the left and his partners to his right
- *   (wife, then concubine, then betrothed). The couple is mirrored when that makes fewer
+ *   (wives, concubines and betrothed alike, by the union's start date, an undated one by the
+ *   partner's birth; see orderUnions). The couple is mirrored when that makes fewer
  *   parent-child lines cross.
  * - Siblings run from oldest to youngest.
  * - A sibling group sits under the couple it descends from, and groups follow the
@@ -144,16 +146,14 @@ export function layoutFamilyTree(
     const take = (lead: LayoutPerson) => {
       if (unitOf.has(lead.id)) return;
       const rank = (r: Relationship) => PARTNER_TYPES.indexOf(r.type);
-      const partners = (partnersOf.get(lead.id) ?? [])
-        .map((r) => ({ r, other: byId.get(r.personAId === lead.id ? r.personBId : r.personAId)! }))
-        .filter(({ other }) => !unitOf.has(other.id) && other.gender !== Gender.MALE)
-        .sort(
-          (a, b) =>
-            rank(a.r) - rank(b.r) ||
-            (a.r.startYear ?? Number.POSITIVE_INFINITY) - (b.r.startYear ?? Number.POSITIVE_INFINITY) ||
-            compareByBirth(a.other, b.other)
-        )
-        .map(({ other }) => other.id);
+      const partners = orderUnions(
+        (partnersOf.get(lead.id) ?? [])
+          .map((r) => ({ r, other: byId.get(r.personAId === lead.id ? r.personBId : r.personAId)! }))
+          .filter(({ other }) => !unitOf.has(other.id) && other.gender !== Gender.MALE),
+        ({ r }) => r,
+        ({ other }) => other,
+        (a, b) => rank(a.r) - rank(b.r) || compareByBirth(a.other, b.other)
+      ).map(({ other }) => other.id);
       const unit: Unit = { members: [lead.id, ...new Set(partners)], parentUnit: null, group: -1, x: 0 };
       unit.members.forEach((id) => unitOf.set(id, unit));
       units.push(unit);
@@ -254,7 +254,19 @@ export function layoutFamilyTree(
       // The member descending from the parents decides the order among siblings
       const blood = (u: Unit) =>
         byId.get(u.members.find((id) => (parentsOf.get(id) ?? []).length > 0) ?? u.members[0])!;
-      return members.sort((a, b) => compareByBirth(blood(a), blood(b)));
+      // Children of the same couple stay together, under where their parents stand in the parent
+      // unit: a man's children by each wife in the order of the wives (those with only him
+      // recorded first, under him), a twice-married woman's children by each husband on that
+      // husband's side. Oldest first within each.
+      const underParents = (u: Unit) => {
+        const parentUnit = u.parentUnit;
+        if (!parentUnit) return Number.POSITIVE_INFINITY;
+        const at = (parentsOf.get(blood(u).id) ?? [])
+          .map((p) => parentUnit.members.indexOf(p))
+          .filter((i) => i >= 0);
+        return at.length > 0 ? at.reduce((sum, i) => sum + i, 0) / at.length : Number.POSITIVE_INFINITY;
+      };
+      return members.sort((a, b) => underParents(a) - underParents(b) || compareByBirth(blood(a), blood(b)));
     });
 
     const above = rowIndex > 0 ? ordered[rowIndex - 1] : [];

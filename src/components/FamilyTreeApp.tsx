@@ -33,7 +33,7 @@ import type { Person, Relationship, GenerationRange, PersonFormData, Relationshi
 import { GenerationCalculator } from '@/lib/generation-calculator';
 import { connectedPersonIds, linkedPersonIds } from '@/lib/candidates';
 import { connectFiltered } from '@/lib/tree-filter';
-import { matchesQuery, searchForest } from '@/lib/search-forest';
+import { searchForest, searchMatches } from '@/lib/search-forest';
 
 const SELECTED_PERSON_KEY = 'selectedPersonId';
 
@@ -44,6 +44,17 @@ export const personPath = (id: string) => `/person/${encodeURIComponent(id)}`;
 function personIdFromPath(pathname: string): string | null {
   const match = /^\/person\/([^/]+)\/?$/.exec(pathname);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+/** The address of the tree centered on a person, with the search shown on the canvas (`?q=`) */
+function treeAddress(personId: string | null, search: string): string {
+  const path = personId ? personPath(personId) : '/';
+  return search ? `${path}?q=${encodeURIComponent(search)}` : path;
+}
+
+/** The search in the current address ('' for none) */
+function searchFromAddress(): string {
+  return new URLSearchParams(window.location.search).get('q')?.trim() ?? '';
 }
 
 function readStoredPersonId(): string | null {
@@ -102,6 +113,10 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
   const [searchQuery, setSearchQuery] = useState('');
   // The search shown on the canvas as a forest of matches ('' for the family tree)
   const [activeSearch, setActiveSearch] = useState('');
+  const activeSearchRef = useRef(activeSearch);
+  activeSearchRef.current = activeSearch;
+  // Whether the selected person was clicked within that search (before, it is whoever was selected)
+  const [chosenInSearch, setChosenInSearch] = useState(false);
 
   const [generationRange, setGenerationRange] = useState<GenerationRange>({
     ancestors: 3,
@@ -151,25 +166,50 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
   /**
    * Put a person at the center, remember them for the next visit, and show their address. A choice
    * by the user adds a history entry (Back returns to the person before); one made by the app
-   * (opening the page, Back itself) replaces the current entry.
+   * (opening the page, Back itself) replaces the current entry. `search` is the search shown on the
+   * canvas, also kept in the address ('' for the family tree); it stays as it is unless given.
+   * `chosen` says the user picked the person within that search, kept in the history entry so Back
+   * and a refresh restore it; with 'none' it is read from the current entry.
    */
-  const centerPerson = useCallback((personId: string, history: 'push' | 'replace' | 'none') => {
-    setSelectedPersonId(personId);
-    try {
-      localStorage.setItem(SELECTED_PERSON_KEY, personId);
-    } catch {
-      // Storage unavailable; the selection just won't be remembered
-    }
-    const path = personPath(personId);
-    if (history !== 'none' && window.location.pathname !== path) {
-      if (history === 'push') window.history.pushState(null, '', path);
-      else window.history.replaceState(null, '', path);
-    }
-  }, []);
+  const centerPerson = useCallback(
+    (
+      personId: string | null,
+      history: 'push' | 'replace' | 'none',
+      search = activeSearchRef.current,
+      chosen = false
+    ) => {
+      const isChosen =
+        history === 'none' ? (window.history.state as { chosenInSearch?: boolean } | null)?.chosenInSearch === true : chosen;
+      setChosenInSearch(search !== '' && isChosen);
+      if (personId) {
+        setSelectedPersonId(personId);
+        try {
+          localStorage.setItem(SELECTED_PERSON_KEY, personId);
+        } catch {
+          // Storage unavailable; the selection just won't be remembered
+        }
+      }
+      setActiveSearch(search);
+      activeSearchRef.current = search;
+      const address = treeAddress(personId ?? selectedPersonIdRef.current, search);
+      if (history !== 'none') {
+        const state = { chosenInSearch: search !== '' && isChosen };
+        // The same address again only updates the entry, so Back still goes somewhere different
+        if (history === 'push' && window.location.pathname + window.location.search !== address) {
+          window.history.pushState(state, '', address);
+        } else {
+          window.history.replaceState(state, '', address);
+        }
+      }
+    },
+    []
+  );
 
-  const selectPerson = useCallback((personId: string) => {
+  /** The user chose a person; `search` replaces the search shown on the canvas when given */
+  const selectPerson = useCallback((personId: string, search?: string) => {
     if (personId === selectedPersonIdRef.current) setRecenterRequest((n) => n + 1);
-    centerPerson(personId, 'push');
+    const nextSearch = search ?? activeSearchRef.current;
+    centerPerson(personId, 'push', nextSearch, nextSearch !== '');
     setIsMenuOpen(false);
   }, [centerPerson]);
 
@@ -205,11 +245,22 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
     centerPerson(candidates[Math.floor(Math.random() * candidates.length)].id, 'replace');
   }, [isLoading, persons, selectedPersonId, initialPersonId, centerPerson, isAuthenticated, t, toast]);
 
-  // Back and Forward: center the person in the address
+  // A search in the address the page was opened with is shown on the canvas
+  useEffect(() => {
+    const search = searchFromAddress();
+    if (!search) return;
+    setSearchQuery(search);
+    setActiveSearch(search);
+    activeSearchRef.current = search;
+  }, []);
+
+  // Back and Forward: show the person and the search in the address
   useEffect(() => {
     const onPopState = () => {
       const id = personIdFromPath(window.location.pathname);
-      if (id && persons.some((p) => p.id === id)) centerPerson(id, 'none');
+      const search = searchFromAddress();
+      setSearchQuery(search);
+      centerPerson(id && persons.some((p) => p.id === id) ? id : null, 'none', search);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -263,7 +314,7 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
   // Search results: matches (narrowed by the filters) as a forest; null without a search or matches
   const forest = React.useMemo(() => {
     if (!activeSearch) return null;
-    const matches = persons.filter((p) => matchesQuery(p, activeSearch) && matchesFilters(p));
+    const matches = searchMatches(persons, relationships, persons.filter(matchesFilters), activeSearch);
     return searchForest(persons, relationships, matches);
   }, [activeSearch, persons, relationships, matchesFilters]);
   const forestPersons = React.useMemo(
@@ -483,10 +534,24 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
     if (eligiblePersons.length > 0) {
       const randomIndex = Math.floor(Math.random() * eligiblePersons.length);
       setSearchQuery('');
-      setActiveSearch('');
-      selectPerson(eligiblePersons[randomIndex].id);
+      selectPerson(eligiblePersons[randomIndex].id, '');
     }
   }, [persons, selectedPersonId, filterGenders, filterLivingInYear, selectPerson]);
+
+  // Run a search ('' ends it). A single match is chosen straight away, showing their family tree;
+  // otherwise the matches are shown as a forest. Either way Back returns to what was shown before.
+  const handleSearch = useCallback((query: string) => {
+    setIsMenuOpen(false);
+    const matches = query ? searchMatches(persons, relationships, persons.filter(matchesFilters), query) : [];
+    if (matches.length === 1) selectPerson(matches[0].id, '');
+    else centerPerson(null, 'push', query);
+  }, [persons, relationships, matchesFilters, selectPerson, centerPerson]);
+
+  // Leave the search and show the family tree of the person chosen in it
+  const showFamily = useCallback((person: Person) => {
+    setIsDetailsOpen(false);
+    selectPerson(person.id, '');
+  }, [selectPerson]);
 
   // Deleting asks for confirmation first
   const handleDeletePerson = useCallback((person: Person) => {
@@ -577,10 +642,7 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
           <LeftPanel
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
-            onSearch={(query) => {
-              setActiveSearch(query);
-              setIsMenuOpen(false);
-            }}
+            onSearch={handleSearch}
             search={
               activeSearch && forest
                 ? { query: activeSearch, total: forest.total, shown: forest.matchIds.size }
@@ -650,6 +712,7 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
               persons={forest && forest.total > 0 ? forestPersons : filteredPersons}
               connectorIds={forest && forest.total > 0 ? forest.connectorIds : connectorIds}
               forestPositions={forest && forest.total > 0 ? forest.positions : null}
+              forestFocus={forest && forest.total > 0 ? forest.focus : null}
               allPersons={persons}
               relationships={relationships}
               selectedPersonId={selectedPersonId}
@@ -695,6 +758,7 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
             onDelete={handleDeletePerson}
             onMerge={(person) => setMergingPerson(person)}
             onChangeRelationships={handleDeleteRelationship}
+            onShowFamily={forest && forest.total > 0 && chosenInSearch ? showFamily : undefined}
           />
         </aside>
       </div>

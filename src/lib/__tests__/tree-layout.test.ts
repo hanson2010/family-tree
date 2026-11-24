@@ -57,7 +57,7 @@ describe('layoutFamilyTree', () => {
     expect(row(persons, rels, 0)).toEqual(['old', 'middle', 'young', 'unknown']);
   });
 
-  it('puts the husband left of his wife, then concubine, then betrothed', () => {
+  it('puts the husband left of his partners, undated ones by birth', () => {
     const persons = [
       person('concubine', Gender.FEMALE, 0, 1960),
       person('wife', Gender.FEMALE, 0, 1970),
@@ -69,7 +69,24 @@ describe('layoutFamilyTree', () => {
       spouse('wife', 'husband'),
       rel('husband', 'betrothed', RelationshipType.BETROTHED),
     ];
-    expect(row(persons, rels, 0)).toEqual(['husband', 'wife', 'concubine', 'betrothed']);
+    expect(row(persons, rels, 0)).toEqual(['husband', 'betrothed', 'concubine', 'wife']);
+  });
+
+  it('orders partners by start date whatever the relationship, then wife, concubine, betrothed', () => {
+    const persons = [
+      person('concubine', Gender.FEMALE, 0, 1960),
+      person('wife', Gender.FEMALE, 0, 1950),
+      person('husband', Gender.MALE, 0, 1945),
+      person('betrothed', Gender.FEMALE, 0, 1940),
+      person('unknown', Gender.FEMALE, 0),
+    ];
+    const rels = [
+      { ...rel('concubine', 'husband', RelationshipType.CONCUBINE), startYear: 1965 },
+      { ...spouse('wife', 'husband'), startYear: 1970 },
+      { ...rel('husband', 'betrothed', RelationshipType.BETROTHED), startYear: 1980 },
+      rel('unknown', 'husband', RelationshipType.CONCUBINE),
+    ];
+    expect(row(persons, rels, 0)).toEqual(['husband', 'concubine', 'wife', 'betrothed', 'unknown']);
   });
 
   it('puts the wife on the left when that makes fewer lines cross', () => {
