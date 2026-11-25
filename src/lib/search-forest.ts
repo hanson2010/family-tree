@@ -2,6 +2,7 @@ import { RelationshipType, type Person, type Relationship } from '@/types';
 import { siblingKindFromParents } from '@/lib/sibling-kind';
 import { GenerationCalculator } from '@/lib/generation-calculator';
 import { connectFiltered } from '@/lib/tree-filter';
+import { aliases } from '@/lib/person-identity';
 import { DEFAULT_LAYOUT_OPTIONS, compareByBirth, layoutFamilyTree, type LayoutOptions } from '@/lib/tree-layout';
 
 /**
@@ -32,17 +33,13 @@ export function searchTerms(query: string): string[] {
 
 type Names = Pick<Person, 'name' | 'courtesyName' | 'artName' | 'otherNames'>;
 
-/** The terms that a person's name, 字, 号 or one of their other names contains (any case) */
+/**
+ * The terms that a name the person goes by contains (any case): their name, 字, 号, the 字 or 号
+ * after the surname (蒋介石 for 蒋中正), or one of their other names
+ */
 function termsMatched(person: Names, terms: string[]): string[] {
-  const names = [person.name, person.courtesyName, person.artName, ...(person.otherNames ?? [])]
-    .filter((n): n is string => !!n)
-    .map((n) => n.toLowerCase());
+  const names = aliases(person).map((n) => n.toLowerCase());
   return terms.filter((term) => names.some((n) => n.includes(term)));
-}
-
-/** Whether a person's name, 字, 号 or one of their other names contains one of the query's strings */
-export function matchesQuery(person: Names, query: string): boolean {
-  return termsMatched(person, searchTerms(query)).length > 0;
 }
 
 /** Each person's relatives through the relationships between `persons` */

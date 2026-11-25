@@ -1,5 +1,6 @@
 import type { Transaction } from '@google-cloud/firestore';
 import { KINDS, getFirestore, queryEntitiesByProperty } from '@/lib/firestore';
+import { IDENTITIES, isLegacyAccountId, renumberAccount, startMerge } from '@/lib/account-merge';
 import type { User } from '@/types';
 
 /**
@@ -8,8 +9,9 @@ import type { User } from '@/types';
  * `User` document. An identity is one Google or GitHub account and belongs to exactly one account;
  * an account may have several.
  *
- * Account IDs are random, except for users from before identities existed: their account ID is
- * their Google account ID, which their data already records, so nothing needs rewriting.
+ * Account IDs are random and the same whichever way the user signs in. Users from before identities
+ * had their Google account ID as account ID; their next sign-in moves them to a random one
+ * (account-merge.ts).
  *
  * Signing in (without a link intent) resolves the identity to an account:
  * 1. the account it belongs to;
@@ -17,10 +19,9 @@ import type { User } from '@/types';
  * 3. the one account with the same email verified by its provider, when this provider has verified
  *    the email too;
  * 4. otherwise a new account.
- * With a link intent (see link-intent.ts), the identity is added to the intent's account instead.
+ * With a link intent (see link-intent.ts), the identity is added to the intent's account instead;
+ * one that belongs to another account offers to merge that account in, once the user confirms.
  */
-
-const IDENTITIES = 'Identity';
 
 export type Provider = 'google' | 'github';
 export const PROVIDERS: Provider[] = ['google', 'github'];
@@ -49,7 +50,7 @@ export interface SignInIdentity {
   verifiedEmail: string | null;
 }
 
-export type LinkOutcome = 'linked' | 'already' | 'inUse';
+export type LinkOutcome = { outcome: 'linked' | 'already' } | { outcome: 'merge'; mergeId: string };
 
 const db = () => getFirestore();
 const identityId = (provider: Provider, providerAccountId: string) => `${provider}:${providerAccountId}`;
@@ -85,6 +86,11 @@ function touchAccount(tx: Transaction, accountId: string, existing: Omit<User, '
 
 /** The account an identity signs in to (see the order above), creating or joining one if needed */
 export async function signInAccount(sign: SignInIdentity): Promise<string> {
+  const accountId = await resolveSignIn(sign);
+  return isLegacyAccountId(accountId) ? renumberAccount(accountId) : accountId;
+}
+
+async function resolveSignIn(sign: SignInIdentity): Promise<string> {
   const id = identityId(sign.provider, sign.providerAccountId);
   const email = sign.verifiedEmail?.toLowerCase() ?? null;
 
@@ -125,17 +131,24 @@ export async function signInAccount(sign: SignInIdentity): Promise<string> {
   });
 }
 
-/** Add an identity to the account that asked to link it */
+/**
+ * Add an identity to the account that asked to link it. One that belongs to another account is
+ * not moved: a merge of that account into this one is recorded for the user to confirm.
+ */
 export async function linkIdentity(sign: SignInIdentity, accountId: string): Promise<LinkOutcome> {
   const id = identityId(sign.provider, sign.providerAccountId);
-  return db().runTransaction(async (tx) => {
+  const result = await db().runTransaction(async (tx): Promise<LinkOutcome | { outcome: 'other'; otherId: string }> => {
     const identity = (await tx.get(identityRef(id))).data() as Omit<Identity, 'id'> | undefined;
-    if (identity) return identity.accountId === accountId ? 'already' : 'inUse';
+    if (identity) {
+      return identity.accountId === accountId ? { outcome: 'already' } : { outcome: 'other', otherId: identity.accountId };
+    }
     const account = (await tx.get(accountRef(accountId))).data() as Omit<User, 'id'> | undefined;
     tx.set(identityRef(id), identityRecord(sign, accountId, new Date()));
     touchAccount(tx, accountId, account, sign);
-    return 'linked';
+    return { outcome: 'linked' };
   });
+  if (result.outcome !== 'other') return result;
+  return { outcome: 'merge', mergeId: await startMerge(accountId, result.otherId, id) };
 }
 
 /** The identities of an account, Google first */

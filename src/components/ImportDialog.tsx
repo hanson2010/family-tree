@@ -144,7 +144,7 @@ export function ImportDialog({ isOpen, persons, linkedIds, onClose, onImported }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent size="review">
         <DialogHeader>
           <DialogTitle>{t('importRecords')}</DialogTitle>
           <DialogDescription>{review ? t('importReviewHint') : t('importDescription')}</DialogDescription>

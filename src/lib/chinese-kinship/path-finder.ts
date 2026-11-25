@@ -58,7 +58,7 @@ function buildDirectRelationshipPath(
       return {
         type: 'COLLATERAL',
         generations: 0,
-        isOlder: false,
+        // Elder or younger comes from the birth years (getChineseRelationshipLabel)
         relationshipType: KinshipRelationshipType.SIBLING,
       };
     case RelationshipType.HALF_SIBLING:

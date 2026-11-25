@@ -16,6 +16,13 @@ export function getSiblingTerm(
     }
   }
 
+  // Birth years that do not tell who is older: both terms, as for other relatives (堂伯/堂叔)
+  if (isOlder === undefined) {
+    if (toGender === 'MALE') return `${KINSHIP_TERMS.BASIC.BROTHER_OLDER}/${KINSHIP_TERMS.BASIC.BROTHER_YOUNGER}`;
+    if (toGender === 'FEMALE') return `${KINSHIP_TERMS.BASIC.SISTER_OLDER}/${KINSHIP_TERMS.BASIC.SISTER_YOUNGER}`;
+    return KINSHIP_TERMS.BASIC.SIBLINGS;
+  }
+
   if (fromGender === 'MALE' || fromGender === 'FEMALE') {
     switch (toGender) {
       case 'MALE':

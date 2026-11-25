@@ -99,6 +99,8 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
   const [isRelationshipFormOpen, setIsRelationshipFormOpen] = useState(false);
   const [relationshipFormMode, setRelationshipFormMode] = useState<'create' | 'edit'>('create');
   const [editingRelationship, setEditingRelationship] = useState<Relationship | null>(null);
+  // Person A filled in when the add form is opened for a person
+  const [relationshipPersonA, setRelationshipPersonA] = useState<string | undefined>(undefined);
 
   const [isQuickRelationshipFormOpen, setIsQuickRelationshipFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -389,10 +391,14 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
       throw new Error(error.error || t('failedToSave'));
     }
 
-    // Put a newly added person at the center, once the list contains them
-    const createdId = personFormMode === 'create' ? (await response.json()).data?.id : null;
-    await fetchData();
-    if (createdId) selectPerson(createdId);
+    // Show the saved person at once (a new one at the center), then reload in the background for
+    // anything else the save changed
+    const saved: Person | undefined = (await response.json()).data;
+    if (saved) {
+      setPersons((list) => [...list.filter((p) => p.id !== saved.id), saved]);
+      if (personFormMode === 'create') selectPerson(saved.id);
+    }
+    fetchData();
   }, [personFormMode, editingPerson, fetchData, selectPerson, t]);
 
   const handleAddRelationship = useCallback(() => {
@@ -400,8 +406,18 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
     setIsMenuOpen(false);
     setRelationshipFormMode('create');
     setEditingRelationship(null);
+    setRelationshipPersonA(undefined);
     setIsRelationshipFormOpen(true);
   }, [requireSignIn]);
+
+  // From the right panel's relationship dialog: a new relationship with that person as person A
+  const handleAddRelationshipFor = useCallback((personId: string) => {
+    setIsDeleteRelationshipFormOpen(false);
+    setRelationshipFormMode('create');
+    setEditingRelationship(null);
+    setRelationshipPersonA(personId);
+    setIsRelationshipFormOpen(true);
+  }, []);
 
   const handleRelationshipFormSubmit = useCallback(async (data: RelationshipFormData) => {
     const url = relationshipFormMode === 'create' ? '/api/relationships' : `/api/relationships/${editingRelationship?.id}`;
@@ -418,6 +434,10 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
       throw new Error(error.error || t('failedToSave'));
     }
 
+    // Draw the saved relationship at once; the reload brings sibling relationships it made
+    // redundant and were removed
+    const saved: Relationship | undefined = (await response.json()).data;
+    if (saved) setRelationships((list) => [...list.filter((r) => r.id !== saved.id), saved]);
     fetchData();
   }, [relationshipFormMode, editingRelationship, fetchData, t]);
 
@@ -779,6 +799,7 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
         relationship={editingRelationship}
         persons={persons}
         linkedIds={linkedIds}
+        preselectedPersonA={relationshipPersonA}
         onSubmit={handleRelationshipFormSubmit}
         onClose={() => setIsRelationshipFormOpen(false)}
       />
@@ -788,7 +809,7 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
         isOpen={isQuickRelationshipFormOpen}
         persons={persons}
         linkedIds={linkedIds}
-        onSubmit={handleRelationshipFormSubmit}
+        onSaved={fetchData}
         onClose={() => setIsQuickRelationshipFormOpen(false)}
       />
 
@@ -829,12 +850,13 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
         preselectedPersonId={selectedPersonId || undefined}
         onDelete={handleDeleteRelationshipConfirm}
         onUpdate={handleUpdateRelationship}
+        onAdd={handleAddRelationshipFor}
         onClose={() => setIsDeleteRelationshipFormOpen(false)}
       />
 
       {/* Delete person confirmation */}
       <Dialog open={!!personToDelete} onOpenChange={(open) => !open && !isDeleting && setPersonToDelete(null)}>
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent size="confirm">
           <DialogHeader>
             <DialogTitle>{t('deletePersonTitle')}</DialogTitle>
             <DialogDescription>

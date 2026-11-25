@@ -207,6 +207,16 @@ function buildRelationshipPath(
     };
   }
 
+  // A sibling's spouse, the sibling recorded as such (not through shared parents): 嫂子, 弟媳, 姐夫, 妹夫
+  if (generationDiff === 0 && hasSpouse && hasSibling) {
+    return {
+      type: 'COLLATERAL',
+      generations: 0,
+      relationshipType: KinshipRelationshipType.SIBLING_IN_LAW,
+      isOlder: determineSiblingAgeOrder(fromPersonId, ctx.intermediateSiblingId, personMap),
+    };
+  }
+
   if (generationDiff === 0 && hasSibling) {
     return {
       type: 'COLLATERAL',

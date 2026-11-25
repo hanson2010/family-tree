@@ -62,9 +62,10 @@ describe('grandchildren', () => {
     expect(term('吕妻', '吕孙女')).toBe('孙女');
   });
 
-  it('follows the first child down for great-grandchildren', () => {
+  it('marks 外 for a daughter anywhere down the line, as relationship.js does', () => {
     expect(term('吕明山', '胡曾孙')).toBe('外曾孙');
-    expect(term('吕明山', '吕曾孙')).toBe('曾孙');
+    // A son's daughter's son (the old engine said 曾孙, following the first child only)
+    expect(term('吕明山', '吕曾孙')).toBe('曾外孙');
   });
 
   it('still names grandparents by the parent on the line', () => {

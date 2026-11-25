@@ -84,7 +84,9 @@ export async function readStore(): Promise<Store> {
  * not have other side effects.
  */
 export async function writeStore<R>(change: (store: Store, tx: Transaction) => R | Promise<R>): Promise<R> {
-  await readStore(); // migrates if needed and warms this instance's copy
+  // A fresh instance first migrates if needed and warms its copy; one with a copy goes straight to
+  // the transaction, which reads the counter and loads the buckets itself if the copy is behind
+  if (!cache) await readStore();
   let committed: Store | null = null;
   const result = await db().runTransaction(async (tx) => {
     const meta = (await tx.get(metaRef())).data() as Meta;

@@ -9,8 +9,10 @@ import { Gender, RelationshipType } from '@/types';
  *   later 继室;
  * - between the women and his children by another of them: a concubine's child calls the wife
  *   嫡母 and calls a concubine 庶母; the wife calls a concubine's child 庶子 / 庶女, and a
- *   concubine calls the wife's child 嫡子 / 嫡女 and another concubine's child 庶子 / 庶女.
- * Two wives and their children (继母 and so on) are left to the general rules.
+ *   concubine calls the wife's child 嫡子 / 嫡女 and another concubine's child 庶子 / 庶女;
+ * - step-parents: a child calls the father's wife who is not their mother (and not a concubine's
+ *   child) 继母, and the mother's husband who is not their father 继父; they call the child
+ *   继子 / 继女. These come before blood terms the two may also share (a 继母 who is also a 表姑).
  */
 
 export const HOUSEHOLD_TERMS = {
@@ -30,6 +32,11 @@ export const HOUSEHOLD_TERMS = {
   CONCUBINE_DAUGHTER: '庶女',
   CONCUBINE_CHILD: '庶出子女',
   LEGAL_CHILD: '嫡出子女',
+  STEP_MOTHER: '继母',
+  STEP_FATHER: '继父',
+  STEP_SON: '继子',
+  STEP_DAUGHTER: '继女',
+  STEP_CHILD: '继子女',
 } as const;
 
 type Union = RelationshipType.SPOUSE | RelationshipType.CONCUBINE;
@@ -55,6 +62,14 @@ export function householdTerm(
     relationships.filter((r) => r.type === RelationshipType.PARENT_CHILD && r.personBId === id).map((r) => r.personAId);
   const isWoman = (id: string) => personMap.get(id)?.gender !== Gender.MALE;
   const isMan = (id: string) => personMap.get(id)?.gender === Gender.MALE;
+  // A parent-child, adoptive or foster relationship recorded between the two comes first
+  const directParent = relationships.some(
+    (r) =>
+      (r.type === RelationshipType.PARENT_CHILD ||
+        r.type === RelationshipType.ADOPTIVE_PARENT ||
+        r.type === RelationshipType.FOSTER_PARENT) &&
+      ((r.personAId === fromId && r.personBId === toId) || (r.personAId === toId && r.personBId === fromId))
+  );
 
   // Two women of the same man
   if (isWoman(fromId) && isWoman(toId)) {
@@ -99,7 +114,7 @@ export function householdTerm(
   if (asChild) {
     if (asChild.woman === RelationshipType.CONCUBINE) return { term: HOUSEHOLD_TERMS.CONCUBINE_MOTHER, generations: 1 };
     if (asChild.mother === RelationshipType.CONCUBINE) return { term: HOUSEHOLD_TERMS.LEGAL_MOTHER, generations: 1 };
-    return null;
+    return directParent ? null : { term: HOUSEHOLD_TERMS.STEP_MOTHER, generations: 1 };
   }
 
   // The woman speaking
@@ -122,8 +137,27 @@ export function householdTerm(
             : HOUSEHOLD_TERMS.LEGAL_CHILD;
       return { term, generations: 1 };
     }
+    if (asWoman.woman === RelationshipType.SPOUSE && !directParent) return { term: stepChild(childGender), generations: 1 };
   }
+
+  // The mother's husband who is not the father
+  const stepFatherOf = (childId: string, manId: string) => {
+    const parents = parentsOf(childId);
+    if (parents.includes(manId) || !isMan(manId)) return false;
+    return parents.some((id) => isWoman(id) && unions(id).get(manId)?.type === RelationshipType.SPOUSE);
+  };
+  if (directParent) return null;
+  if (stepFatherOf(fromId, toId)) return { term: HOUSEHOLD_TERMS.STEP_FATHER, generations: 1 };
+  if (stepFatherOf(toId, fromId)) return { term: stepChild(personMap.get(toId)?.gender), generations: 1 };
   return null;
+}
+
+function stepChild(gender?: Gender): string {
+  return gender === Gender.MALE
+    ? HOUSEHOLD_TERMS.STEP_SON
+    : gender === Gender.FEMALE
+      ? HOUSEHOLD_TERMS.STEP_DAUGHTER
+      : HOUSEHOLD_TERMS.STEP_CHILD;
 }
 
 /**

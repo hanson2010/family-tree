@@ -6,7 +6,8 @@ import { BrandMark } from '@/components/BrandMark';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { Languages, LogIn, LogOut, PanelLeft } from 'lucide-react';
+import { Languages, LogIn, LogOut, PanelLeft, Settings } from 'lucide-react';
+import { KinshipSettingsDialog } from '@/components/KinshipSettingsDialog';
 import { useLocale } from '@/components/LocaleProvider';
 import { Locale } from '@/lib/i18n';
 
@@ -18,6 +19,7 @@ interface HeaderProps {
 export function Header({ onOpenMenu }: HeaderProps) {
   const { data: session, status } = useSession();
   const { locale, setLocale, t } = useLocale();
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
   const toggleLocale = () => {
     const nextLocale = locale === 'zh' ? 'en' : 'zh';
@@ -47,6 +49,19 @@ export function Header({ onOpenMenu }: HeaderProps) {
         </Link>
 
         <div className="flex-1" />
+
+        {/* How kinship terms are worded */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsSettingsOpen(true)}
+          className="text-muted-foreground"
+          aria-label={t('kinshipSettings')}
+          title={t('kinshipSettings')}
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
+        <KinshipSettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
         {/* Language toggle */}
         <Button variant="ghost" size="sm" onClick={toggleLocale} className="text-muted-foreground">

@@ -16,12 +16,14 @@ import { householdTerm } from './wives-concubines';
 import { bloodTerm } from './blood-terms';
 import { siblingSpouseTerm } from './sibling-spouse-terms';
 import { descendantSpouseTerm } from './descendant-spouse-terms';
+import { chainTerm, type KinshipOptions } from './chain-terms';
 
 export type { KinshipContext, RelationshipPath, RelationshipEdge, PathNode, GenderKey, KinshipSide, GrandparentSide } from './types';
 export { KinshipRelationshipType } from './types';
 export { findRelationshipPath, getGenderKey } from './path-finder';
 export { getChineseKinshipTerm } from './terms';
 export { KINSHIP_TERMS, EXTENDED_KINSHIP_TERMS } from './constants';
+export type { KinshipOptions, KinshipRegion, KinshipStyle } from './chain-terms';
 
 /**
  * Calculate detailed relationship context for accurate kinship terms
@@ -31,7 +33,8 @@ export function calculateDetailedRelationship(
   fromPersonId: string,
   toPersonId: string,
   persons: Person[],
-  relationships: Relationship[]
+  relationships: Relationship[],
+  options: KinshipOptions = {}
 ): {
   term: string;
   path: RelationshipPath | null;
@@ -59,6 +62,12 @@ export function calculateDetailedRelationship(
   if (household) {
     return { term: household.term, path: null, context: { generationDiff: household.generations } };
   }
+  // The chain of family steps between them, looked up in the table (chain-terms.ts); the rules
+  // below name what the table does not cover (longer chains, unknown genders, half siblings)
+  const chain = chainTerm(fromPersonId, toPersonId, persons, relationships, personMap, options);
+  if (chain) {
+    return { term: chain.term, path: null, context: { generationDiff: chain.generations } };
+  }
   // The spouse of one's spouse's sibling: 舅嫂, 内弟媳, 连襟, 妯娌, 姐夫, 妹夫
   const siblingSpouse = siblingSpouseTerm(fromPersonId, toPersonId, relationships, personMap);
   if (siblingSpouse) {
@@ -70,12 +79,13 @@ export function calculateDetailedRelationship(
     return { term: descendantSpouse.term, path: null, context: { generationDiff: descendantSpouse.generations } };
   }
   // Nephews and nieces, cousins and their children, parents' cousins: 堂 or 表
+  // A marriage that links them more closely is named along that link alone
   const blood = bloodTerm(fromPersonId, toPersonId, relationships, personMap);
-  if (blood) {
+  if (blood && 'term' in blood) {
     return { term: blood.term, path: null, context: { generationDiff: blood.generations } };
   }
 
-  const path = findRelationshipPath(fromPersonId, toPersonId, persons, relationships);
+  const path = findRelationshipPath(fromPersonId, toPersonId, persons, blood?.closer ?? relationships);
 
   if (!path) {
     return {
@@ -104,7 +114,8 @@ export function calculateDetailedRelationship(
     isOlder = determineAgeOrder(fromPerson, toPerson);
   }
 
-  const term = getChineseKinshipTerm(fromPerson, toPerson, path, { side, isOlder, siblingRank });
+  const nephew = nephewTerm(fromPersonId, toPersonId, path.relationshipType as KinshipRelationshipType, relationships, personMap);
+  const term = nephew ?? getChineseKinshipTerm(fromPerson, toPerson, path, { side, isOlder, siblingRank });
 
   return {
     term,
@@ -116,6 +127,67 @@ export function calculateDetailedRelationship(
       siblingRank,
     },
   };
+}
+
+const NEPHEW_DEPTH: Partial<Record<KinshipRelationshipType, number>> = {
+  [KinshipRelationshipType.NEPHEW_NIECE]: 1,
+  [KinshipRelationshipType.GREAT_NEPHEW_NIECE]: 2,
+  [KinshipRelationshipType.GREAT_GREAT_NEPHEW_NIECE]: 3,
+};
+
+/**
+ * A sibling's (or the spouse's sibling's) child, grandchild or great-grandchild, named by that
+ * sibling: a brother's 侄子 / 侄孙 / 侄曾孙, a sister's 外甥 / 外甥孙 / 外甥曾孙, a wife's brother's
+ * 内侄 / 内侄孙 (a husband's brother's are 侄 as one's own). Null when the sibling is not found.
+ */
+function nephewTerm(
+  fromId: string,
+  toId: string,
+  type: KinshipRelationshipType,
+  relationships: Relationship[],
+  personMap: Map<string, Person>
+): string | null {
+  const depth = NEPHEW_DEPTH[type];
+  if (!depth) return null;
+  const parentsOf = (id: string) =>
+    relationships
+      .filter((r) => r.type === RelationshipType.PARENT_CHILD && r.personBId === id)
+      .map((r) => r.personAId);
+  const isSibling = (a: string, b: string) =>
+    a !== b &&
+    (parentsOf(a).some((p) => parentsOf(b).includes(p)) ||
+      relationships.some(
+        (r) =>
+          (r.type === RelationshipType.SIBLING || r.type === RelationshipType.HALF_SIBLING) &&
+          ((r.personAId === a && r.personBId === b) || (r.personAId === b && r.personBId === a))
+      ));
+  const spouses = relationships
+    .filter((r) => r.type === RelationshipType.SPOUSE && (r.personAId === fromId || r.personBId === fromId))
+    .map((r) => (r.personAId === fromId ? r.personBId : r.personAId));
+
+  // The target's ancestors `depth` generations up
+  let line = [toId];
+  for (let i = 0; i < depth; i++) line = line.flatMap(parentsOf);
+  let sibling = line.find((id) => isSibling(fromId, id));
+  let viaWife = false;
+  if (!sibling) {
+    for (const spouse of spouses) {
+      sibling = line.find((id) => isSibling(spouse, id));
+      if (sibling) {
+        viaWife = personMap.get(spouse)?.gender === GenderEnum.FEMALE;
+        break;
+      }
+    }
+  }
+  if (!sibling) return null;
+
+  const female = personMap.get(toId)?.gender === GenderEnum.FEMALE;
+  const brother = personMap.get(sibling)?.gender === GenderEnum.MALE;
+  const level = ['', '', '孙', '曾孙'][depth];
+  if (!brother) return `外甥${level}${female ? '女' : ''}`;
+  const base = viaWife ? '内侄' : '侄';
+  if (depth === 1) return `${base}${female ? '女' : viaWife ? '' : '子'}`;
+  return `${base}${level}${female ? '女' : ''}`;
 }
 
 /**
@@ -342,8 +414,9 @@ export function getChineseRelationshipLabel(
   fromPersonId: string,
   toPersonId: string,
   persons: Person[],
-  relationships: Relationship[]
+  relationships: Relationship[],
+  options: KinshipOptions = {}
 ): string {
-  const result = calculateDetailedRelationship(fromPersonId, toPersonId, persons, relationships);
+  const result = calculateDetailedRelationship(fromPersonId, toPersonId, persons, relationships, options);
   return result.term;
 }

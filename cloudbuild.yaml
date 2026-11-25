@@ -38,7 +38,10 @@ steps:
       - '--image'
       - 'gcr.io/$PROJECT_ID/family-tree:$SHORT_SHA'
       - '--region'
-      - 'us-west1'
+      - 'us-central1'
+      # Caps cost under abuse; MCP limits are counted per instance
+      - '--max-instances'
+      - '2'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'

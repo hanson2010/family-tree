@@ -29,6 +29,11 @@ interface PersonAutocompleteProps {
   labelHidden?: boolean;
   /** A ✕ in the box clears the choice (onChange(''); the placeholder then says what that means) */
   clearable?: boolean;
+  /**
+   * Typed text is kept as a new person's name instead of being undone: `text` is the box's text,
+   * `onTextChange` reports it, and typing clears a chosen person (onChange(''))
+   */
+  allowNew?: { text: string; onTextChange: (text: string) => void };
   disabled?: boolean;
   className?: string;
 }
@@ -47,6 +52,7 @@ export function PersonAutocomplete({
   inline = false,
   labelHidden = false,
   clearable = false,
+  allowNew,
   disabled = false,
   className,
 }: PersonAutocompleteProps) {
@@ -61,8 +67,12 @@ export function PersonAutocomplete({
   const selectedPerson = useMemo(() => persons.find((p) => p.id === value), [persons, value]);
 
   useEffect(() => {
-    setInputValue(selectedPerson?.name ?? '');
-  }, [selectedPerson]);
+    if (!allowNew) setInputValue(selectedPerson?.name ?? '');
+  }, [selectedPerson, allowNew]);
+  const newText = allowNew?.text;
+  useEffect(() => {
+    if (newText !== undefined) setInputValue(newText);
+  }, [newText]);
 
   // While the box shows the chosen person's name, suggest as if nothing were typed
   const query = selectedPerson && inputValue === selectedPerson.name ? '' : inputValue;
@@ -86,7 +96,7 @@ export function PersonAutocomplete({
 
   const restore = () => {
     setShowSuggestions(false);
-    setInputValue(selectedPerson?.name ?? '');
+    if (!allowNew) setInputValue(selectedPerson?.name ?? '');
   };
 
   useEffect(() => {
@@ -94,12 +104,12 @@ export function PersonAutocomplete({
       const target = event.target as Node;
       if (!suggestionsRef.current?.contains(target) && !inputRef.current?.contains(target)) {
         setShowSuggestions(false);
-        if (selectedPerson) setInputValue(selectedPerson.name);
+        if (selectedPerson && !allowNew) setInputValue(selectedPerson.name);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [selectedPerson]);
+  }, [selectedPerson, allowNew]);
 
   // While the list is open, Escape closes only the list. The dialog listens for Escape on the
   // document, so this catches it earlier, on the window.
@@ -110,14 +120,15 @@ export function PersonAutocomplete({
       if (event.key !== 'Escape' || document.activeElement !== inputRef.current) return;
       event.stopPropagation();
       setShowSuggestions(false);
-      setInputValue(selectedPerson?.name ?? '');
+      if (!allowNew) setInputValue(selectedPerson?.name ?? '');
     };
     window.addEventListener('keydown', handleEscape, true);
     return () => window.removeEventListener('keydown', handleEscape, true);
-  }, [isListOpen, selectedPerson]);
+  }, [isListOpen, selectedPerson, allowNew]);
 
   const select = (person: Person) => {
     setInputValue(person.name);
+    allowNew?.onTextChange(person.name);
     onChange(person.id);
     setShowSuggestions(false);
   };
@@ -162,13 +173,17 @@ export function PersonAutocomplete({
           onChange={(e) => {
             setInputValue(e.target.value);
             setShowSuggestions(true);
+            if (allowNew) {
+              allowNew.onTextChange(e.target.value);
+              if (value) onChange('');
+            }
           }}
           onKeyDown={handleKeyDown}
           onClick={() => setShowSuggestions(true)}
           autoComplete="off"
-          className={cn(labelHidden && 'h-9', clearable && value && 'pr-8')}
+          className={cn(labelHidden && 'h-9', clearable && (value || allowNew?.text) && 'pr-8')}
         />
-        {clearable && value && !disabled && (
+        {clearable && (value || allowNew?.text) && !disabled && (
           <button
             type="button"
             aria-label={t('clearChoice')}
@@ -176,6 +191,7 @@ export function PersonAutocomplete({
             onClick={() => {
               onChange('');
               setInputValue('');
+              allowNew?.onTextChange('');
               setShowSuggestions(false);
             }}
             className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"

@@ -18,13 +18,6 @@ export enum RelationshipType {
 }
 
 // Date components for precise date handling
-export interface DateComponents {
-  year?: number;
-  month?: number;   // 1-12
-  day?: number;     // 1-31
-  isLunarCalendar?: boolean;
-}
-
 // Core Interfaces
 export interface Person {
   id: string;
@@ -107,14 +100,6 @@ export interface GenerationRange {
   descendants: number;   // Generations below center (default: 3)
 }
 
-export interface FilterState {
-  genders: Gender[];
-  relationshipTypes: RelationshipType[];
-  branchId: string | null;
-  searchQuery: string;
-  showPrivate: boolean;
-}
-
 // Graph visualization types
 export interface GraphNode {
   id: string;
@@ -129,13 +114,6 @@ export interface GraphNode {
   fy?: number | null;
   vx?: number;
   vy?: number;
-}
-
-export interface GraphLink {
-  id: string;
-  source: string | GraphNode;
-  target: string | GraphNode;
-  type: RelationshipType;
 }
 
 // Form data types

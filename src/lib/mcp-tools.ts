@@ -422,17 +422,22 @@ with search_persons before creating them; creating a public person that matches 
     {
       title: 'Get a kinship term',
       description:
-        'The Chinese kinship term for toId as seen from fromId (what fromId calls toId, e.g. 祖父 or 堂兄), worked out from the relationships you can see, as on the tree. generationDifference is how many generations apart they are. term is null when the two are not connected or no term fits.',
-      inputSchema: z.object({ fromId: z.string(), toId: z.string() }),
+        'The Chinese kinship term for toId as seen from fromId (what fromId calls toId, e.g. 祖父 or 堂兄), worked out from the relationships you can see, as on the tree. style is formal (祖父, 舅父; the default) or casual (爷爷, 舅舅); region southern (外公; the default) or northern (姥爷) words casual terms. generationDifference is how many generations apart they are. term is null when the two are not connected or no term fits.',
+      inputSchema: z.object({
+        fromId: z.string(),
+        toId: z.string(),
+        style: z.enum(['formal', 'casual']).optional(),
+        region: z.enum(['southern', 'northern']).optional(),
+      }),
       annotations: { readOnlyHint: true },
     },
-    async ({ fromId, toId }) =>
+    async ({ fromId, toId, style, region }) =>
       run(async () => {
         const [from, to] = await Promise.all([getVisiblePerson(fromId, userId), getVisiblePerson(toId, userId)]);
         if (fromId === toId) return { from: from.name, to: to.name, term: '自己' };
         const persons = await listVisiblePersons(userId);
         const relationships = await listVisibleRelationships(userId);
-        const { term, context } = calculateDetailedRelationship(fromId, toId, persons, relationships);
+        const { term, context } = calculateDetailedRelationship(fromId, toId, persons, relationships, { style, region });
         const known = !!term && term !== UNKNOWN_KINSHIP;
         return {
           from: from.name,

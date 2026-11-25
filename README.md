@@ -4,8 +4,8 @@ A web app for building and viewing family trees, labelled with Chinese kinship t
 
 ## Features
 
-- Sign in with Google or GitHub. One account can have both: link the other with **Link** on the account page (click your name at the top right), or sign in for the first time with one whose verified email matches the account's. A sign-in method of another account cannot be linked, and the last one cannot be unlinked. You can change or delete only the persons and relationships you created; private persons are visible only to their creator.
-- The tree is built around the selected person and shows 0–3 generations above and below (default 3), one row per generation. Persons within 四代 of the selected person (lineal relatives up to great-grandparents and great-grandchildren; collateral relatives sharing an ancestor no further back than a great-grandparent, such as 伯祖, 堂伯, 从堂兄弟, 堂侄 and 侄孙; plus spouses and in-laws at either end) show their Chinese kinship term, including those between wives and concubines (主母, 侧室, 嫡母, 庶母, …).
+- Sign in with Google or GitHub. One account can have both: link the other with **Link** on the account page (click your name at the top right), or sign in for the first time with one whose verified email matches the account's. Linking a sign-in method that belongs to another account offers to merge that account into yours: after you confirm (within 10 minutes), its sign-in methods, persons, relationships, saved faces and API tokens move to your account and the other account is deleted. The last sign-in method cannot be unlinked. You can change or delete only the persons and relationships you created; private persons are visible only to their creator.
+- The tree is built around the selected person and shows 0–3 generations above and below (default 3), one row per generation. Persons within 四代 of the selected person (lineal relatives up to great-grandparents and great-grandchildren; collateral relatives sharing an ancestor no further back than a great-grandparent, such as 伯祖, 堂伯, 从堂兄弟, 堂侄 and 侄孙; plus spouses and in-laws at either end) show their Chinese kinship term. A term comes from the chain of family steps between the two (父亲的哥哥的儿子 …), up to five steps, looked up in a table generated from [relationship.js](https://github.com/mumuy/relationship), with the app's own terms for wives and concubines (主母, 侧室, 嫡母, 庶母, …), step-parents (继母, 继父), spouses of siblings and grandchildren (舅嫂, 连襟, 孙媳, 岳祖父, …), a wife's brother's children (内侄) and cousins' children (表侄); a wife calls her husband's relatives beyond his parents and siblings as he does (祖父, 侄子, 外甥). Kinship terms name one level of 表: a relative through women further out, such as a second cousin through a grandmother (林黛玉 and 史湘云), is named with the plain 表 (表姐, 表妹). Of equally short chains the one through a marriage wins (a cousin who is one's wife is 妻子); where birth dates do not tell elder from younger, both terms show (伯父/叔父). A parent's brothers and sisters are numbered by birth order among them, the parent included (大姨母, 二姨母, 小姨母; casual 大姨, 二姨, and 老姨 in the north for the youngest of three or more), when every one of them has a birth date. The gear button at the top right sets formal (父亲, 祖父, 舅父; the default) or casual terms (爸爸, 爷爷, 舅舅), and for casual ones southern (外公, 外婆) or northern (姥爷, 姥姥).
 - Relationship types: parent–child, sibling, half sibling, spouse, concubine, betrothed, adoptive parent, foster parent, sworn sibling. Birth, death and relationship dates may include month and day.
 - A man's wives, concubines and betrothed stand beside him in order of start date (an undated one by birth year), whatever the relationship; their lines are solid, dashed and dotted. A person's marriages are numbered on the tree in order of start date when at least two of them have one.
 - Avatars from photos (JPEG, PNG, GIF or WebP, up to 10MB): a photo uploaded for one person is cropped to its middle square. For a group photo, Gemini finds the faces so you can give avatars to several persons, and unused faces can be saved for later.
@@ -22,11 +22,13 @@ Requires Node.js 22.22+, a Google Cloud project with a Firestore database in Nat
 npm install
 cp .env.local.example .env.local   # fill in the values; each is described in the file
 npm run dev                        # http://localhost:3000
+npm test                           # tests; kinship terms of generated families are kept in src/lib/__tests__/__snapshots__/kinship-chains.txt
+npm run kinship:table              # regenerate the kinship term table from relationship.js (about 6 minutes)
 ```
 
 **Firestore:** create a service account with the Datastore Owner role, download its JSON key and set `GOOGLE_APPLICATION_CREDENTIALS` to that key's path. `GOOGLE_CLOUD_PROJECT` must be the project the key belongs to.
 
-**Google sign-in:** in Google Cloud Console → APIs & Services → Credentials, create an OAuth client ID of type "Web application". Add the app's URL as an authorized JavaScript origin and `<NEXTAUTH_URL>/auth/callback` as a redirect URI, e.g. `http://localhost:3000` and `http://localhost:3000/auth/callback`.
+**Google sign-in:** in Google Cloud Console → APIs & Services → Credentials, create an OAuth client ID of type "Web application". Add the app's URL as an authorized JavaScript origin and `<NEXTAUTH_URL>/api/auth/callback/google` as a redirect URI, e.g. `http://localhost:3000` and `http://localhost:3000/api/auth/callback/google`.
 
 **GitHub sign-in:** at GitHub → Settings → Developer settings → OAuth Apps, create an app with the app's URL as homepage and `<NEXTAUTH_URL>/api/auth/callback/github` as callback URL, then set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. A GitHub OAuth app has one callback URL, so use separate apps for local and deployed sites.
 
@@ -38,7 +40,7 @@ npm run dev                        # http://localhost:3000
 
 ## Deploy
 
-On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run using [cloudbuild.yaml](cloudbuild.yaml). One-time setup:
+On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run in `us-central1` using [cloudbuild.yaml](cloudbuild.yaml). The Firestore database is in the `nam5` multi-region (central US), so the app runs next to it: every save and load makes several round trips to Firestore. One-time setup:
 
 1. Enable the APIs:
    ```bash
@@ -88,7 +90,7 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
    ```yaml
    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,NEXTAUTH_URL=https://your-cloud-run-url.a.run.app,GOOGLE_AI_MODEL=gemini-3.5-flash-lite,GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com,GITHUB_CLIENT_ID=your-github-client-id,GOOGLE_AI_MODEL=gemini-3.5-flash-lite'
    ```
-   Then add that URL and its `/auth/callback` redirect URI to the Google OAuth client, and register `<deployed URL>/api/auth/callback/github` as the GitHub OAuth app's callback URL.
+   Then add that URL and its `/api/auth/callback/google` redirect URI to the Google OAuth client, and register `<deployed URL>/api/auth/callback/github` as the GitHub OAuth app's callback URL.
 6. Let Firestore delete expired one-time avatar upload links (usually within 24 hours of expiry):
    ```bash
    gcloud firestore fields ttls update expiresAt --collection-group=AvatarUpload --enable-ttl
@@ -100,14 +102,12 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
    gcloud firestore indexes fields update image --collection-group=PersonAvatar --disable-indexes
    ```
 
-**Upgrading from a version that stored one Firestore document per person:** the first request after deploying moves persons and relationships into the new layout and avatars into their own documents. The old `Person` and `Relationship` collections are left unchanged; delete them once the app shows all your data.
-
 ## Usage
 
-- Signed in, the sidebar offers **Add Person**, **Add Relationship**, **Add Family Relationships**, **Import from text or scans** and **Avatars from a group photo**.
+- Signed in, the sidebar offers **Add Person**, **Add Relationship**, **Add a Family**, **Import from text or scans** and **Avatars from a group photo**. **Add a Family** takes two parents and up to three children, each picked from the tree or typed as a new name, a new child with an optional birth date (a name exactly one person of that gender, and birth year when given, has is that person), and creates the new persons, the marriage (with an optional date) and the parent–child relationships at once, skipping relationships that exist.
 - Each person has an address, `/person/<id>`, shown in the address bar for the person at the center: refresh, bookmark or share it, and Back returns to the person before. A public person's link shows their name, years, names and avatar in link previews; a private person's link works only for their creator, signed in, and its preview shows nothing about them.
 - Click a person to select them; double-click one you created to edit them. The right panel shows their details and relatives, and lets you change their relationships, merge another of your persons into them, or delete them with their relationships.
-- Search (Enter or **Search**) finds persons whose name, 字, 号 or other names contain the text. Several strings separated by 、 or commas (`贾政、王夫人`) find persons containing any of them, keeping only families in which every string is found. The matches are shown on the canvas: matches in the same family form one tree, joined through faded persons, with the other parent of each 同父异母 or 同母异父 sibling shown too; unrelated matches stand side by side. At most 100 matches are shown, the earliest born. A single match is chosen straight away, showing their family tree. Click a person to see their details, then **查看家谱** (Show family tree) to see their family tree; clearing the search returns to the family tree too. The search is kept in the address (`?q=`), so Back returns to the results.
+- Search (Enter or **Search**) finds persons whose name, 字, 号 (alone or after the surname, e.g. 蒋介石 for 蒋中正) or other names contain the text. Several strings separated by 、 or commas (`贾政、王夫人`) find persons containing any of them, keeping only families in which every string is found. The matches are shown on the canvas: matches in the same family form one tree, joined through faded persons, with the other parent of each 同父异母 or 同母异父 sibling shown too; unrelated matches stand side by side. At most 100 matches are shown, the earliest born. A single match is chosen straight away, showing their family tree. Click a person to see their details, then **查看家谱** (Show family tree) to see their family tree; clearing the search returns to the family tree too. The search is kept in the address (`?q=`), so Back returns to the results.
 - The gender and "living in year" filters keep the tree connected: persons needed to link the matches are shown faded with a dashed ring. They also narrow search results.
 - The reload button beside **Random person** loads the latest data, e.g. after changes through MCP, and keeps the selected person.
 - Point at a person to highlight their lines. Drag to pan, scroll or use +/− to zoom; the third zoom button returns to the full view.
@@ -117,12 +117,14 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run u
 
 AI assistants can read and change the family tree through MCP at `<site URL>/api/mcp`, acting as you with the same rules as the website: they see public persons and yours, change only persons and relationships you created, and are refused duplicate public persons.
 
-1. Signed in, click your name at the top right, open **API tokens** and create a token. It is shown once; up to 10 per user. Revoking one stops it at once.
+1. Signed in, click your name at the top right, open **API tokens** and create a token. It is shown once; up to 10 per user. Revoking one stops it within a minute.
 2. Add the server to the client with the token as a Bearer header, e.g. for Claude Code, in your project folder:
    ```bash
    claude mcp add --scope project --transport http family-tree https://family-tree.pythoner.work/api/mcp --header "Authorization: Bearer <token>"
    ```
    This saves the token in the folder's `.mcp.json`; never commit or share that file.
+
+Each token may make 60 calls a minute and 2,000 a day; of these, 20 a minute and 500 a day may change data (`create_…`, `update_…`, `delete_…`, `merge_…`, `set_…`, `remove_…`, `add_…`, `assign_…`). An address that sends a missing or wrong token 10 times in a minute is refused for the rest of that minute. A refused call gets HTTP 429 with `Retry-After`. Each server instance counts separately, and Cloud Run runs at most two.
 
 Tools:
 - Persons: `search_persons`, `get_person`, `create_person`, `update_person`, `merge_persons`, `delete_person`.

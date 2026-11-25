@@ -186,13 +186,13 @@ export function LeftPanel({
             <UserPlus className="mr-2 h-4 w-4" />
             {t('addPerson')}
           </Button>
-          <Button variant="outline" className="w-full justify-start bg-card" onClick={onQuickAddRelationship}>
-            <Users className="mr-2 h-4 w-4" />
-            {t('quickAddRelationship')}
-          </Button>
           <Button variant="outline" className="w-full justify-start bg-card" onClick={onAddRelationship}>
             <GitBranch className="mr-2 h-4 w-4" />
             {t('addRelationship')}
+          </Button>
+          <Button variant="outline" className="w-full justify-start bg-card" onClick={onQuickAddRelationship}>
+            <Users className="mr-2 h-4 w-4" />
+            {t('quickAddRelationship')}
           </Button>
           <Button variant="outline" className="w-full justify-start bg-card" onClick={onImport}>
             <ScanText className="mr-2 h-4 w-4" />

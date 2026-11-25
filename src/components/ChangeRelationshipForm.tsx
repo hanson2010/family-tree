@@ -22,7 +22,7 @@ import { useToast } from '@/components/ui/use-toast';
 import type { Relationship, RelationshipFormData, RelationshipType, Person } from '@/types';
 import { RelationshipType as RelType, Gender as GenderEnum } from '@/types';
 import { compareByBirth } from '@/lib/tree-layout';
-import { Loader2, Trash2, Edit, AlertTriangle } from 'lucide-react';
+import { Loader2, Trash2, Edit, AlertTriangle, Plus } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
 import { PersonAutocomplete } from '@/components/PersonAutocomplete';
 import { DateInputs, FormGrid, RowLabel } from '@/components/FormLayout';
@@ -35,6 +35,8 @@ interface ModifyOrRemoveRelationshipFormProps {
   preselectedPersonId?: string;
   onDelete: (relationshipId: string) => Promise<void>;
   onUpdate: (relationshipId: string, data: RelationshipFormData) => Promise<void>;
+  /** Add a relationship with this person as person A (the add form takes over from here) */
+  onAdd?: (personId: string) => void;
   onClose: () => void;
 }
 
@@ -73,6 +75,7 @@ export function ChangeRelationshipForm({
   preselectedPersonId,
   onDelete,
   onUpdate,
+  onAdd,
   onClose,
 }: ModifyOrRemoveRelationshipFormProps) {
   const { toast } = useToast();
@@ -245,7 +248,7 @@ export function ChangeRelationshipForm({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent size="form">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit className="h-5 w-5" />
@@ -267,6 +270,14 @@ export function ChangeRelationshipForm({
                 label={t('selectPerson')}
               />
             </FormGrid>
+          )}
+
+          {/* A new relationship of this person, in the add form */}
+          {selectedPersonId && onAdd && (
+            <Button type="button" variant="outline" className="w-full justify-start bg-card" onClick={() => onAdd(selectedPersonId)}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t('addRelationship')}
+            </Button>
           )}
 
           {/* Relationships List */}

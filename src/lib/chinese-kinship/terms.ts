@@ -162,11 +162,17 @@ export function getChineseKinshipTerm(
     case KinshipRelationshipType.CHILD_IN_LAW:
       return getChildInLawTerm(toGender);
 
+    // Elder or younger is the sibling's, against the speaker or the spouse: never the two persons'
+    // own ages; unknown gives both terms
     case KinshipRelationshipType.SIBLING_IN_LAW:
-      return getSiblingInLawTerm(toGender, isOlder);
+      return path.isOlder === undefined
+        ? `${getSiblingInLawTerm(toGender, true)}/${getSiblingInLawTerm(toGender, false)}`
+        : getSiblingInLawTerm(toGender, path.isOlder);
 
     case KinshipRelationshipType.SPOUSE_SIBLING:
-      return getSpouseSiblingTerm(fromGender, toGender, isOlder);
+      return path.isOlder === undefined
+        ? `${getSpouseSiblingTerm(fromGender, toGender, true)}/${getSpouseSiblingTerm(fromGender, toGender, false)}`
+        : getSpouseSiblingTerm(fromGender, toGender, path.isOlder);
 
     case KinshipRelationshipType.SIBLINGS_SPOUSE_MUTUAL:
       return getSiblingsSpouseMutualTerm(fromGender, toGender);

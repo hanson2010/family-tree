@@ -7,6 +7,7 @@ import { Maximize2, Minus, Plus } from 'lucide-react';
 import type { Person, Relationship, GraphNode } from '@/types';
 import { Gender as GenderEnum, RelationshipType } from '@/types';
 import { getChineseRelationshipLabel } from '@/lib/chinese-kinship';
+import { useKinshipSettings } from '@/components/KinshipSettingsProvider';
 import { closeKinIds } from '@/lib/kinship-scope';
 import { DEFAULT_LAYOUT_OPTIONS, PARENTAL_TYPES, PARTNER_TYPES, layoutFamilyTree } from '@/lib/tree-layout';
 import { marriageOrdinals } from '@/lib/marriage-order';
@@ -281,6 +282,7 @@ export function FamilyTreeCanvas({
   onEditPerson,
 }: FamilyTreeCanvasProps) {
   const { t } = useLocale();
+  const { options: kinshipOptions } = useKinshipSettings();
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
@@ -417,7 +419,7 @@ export function FamilyTreeCanvas({
         kinship = selfLabel;
       } else if (selectedPersonId && closeIds?.has(person.id)) {
         try {
-          const term = getChineseRelationshipLabel(selectedPersonId, person.id, kinshipPersons, relationships);
+          const term = getChineseRelationshipLabel(selectedPersonId, person.id, kinshipPersons, relationships, kinshipOptions);
           if (term && term !== UNKNOWN_KINSHIP) kinship = term;
         } catch {
           // No kinship term for this pair
@@ -705,7 +707,7 @@ export function FamilyTreeCanvas({
       glide?.stop();
       svg.interrupt();
     };
-  }, [persons, connectorIds, kinshipPersons, relationships, selectedPersonId, forestPositions, forestFocus, onSelectPerson, onEditPerson, selfLabel, centerOn]);
+  }, [persons, connectorIds, kinshipPersons, relationships, selectedPersonId, forestPositions, forestFocus, onSelectPerson, onEditPerson, selfLabel, centerOn, kinshipOptions]);
 
   // The selected person chosen again (from search, say): glide back to them
   const selectedRef = useRef(selectedPersonId);

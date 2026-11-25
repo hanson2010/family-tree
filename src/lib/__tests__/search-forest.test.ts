@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesQuery, searchForest, searchMatches, searchTerms } from '../search-forest';
+import { searchForest, searchMatches, searchTerms } from '../search-forest';
 import { Gender, RelationshipType, type Person, type Relationship } from '@/types';
 
 const P = (id: string, name: string, birthYear: number, extra: Partial<Person> = {}): Person => ({
@@ -35,16 +35,27 @@ const persons = [
 ];
 const relationships = [parent('gf', 'she'), parent('gf', 'zheng'), parent('she', 'ying'), parent('zheng', 'tan')];
 
-describe('matchesQuery', () => {
+/** Whether a search finds this person, searched on their own */
+const finds = (person: Person, query: string) => searchMatches([person], [], [person], query).length > 0;
+
+describe('which names a search finds', () => {
+  it('matches the 字 or 号 after the surname', () => {
+    const jieshi = P('jieshi', '蒋中正', 1887, { courtesyName: '介石' });
+    const baili = P('baili', '蒋方震', 1882, { courtesyName: '百里' });
+    expect(finds(jieshi, '蒋介石')).toBe(true);
+    expect(finds(baili, '蒋百里')).toBe(true);
+    expect(finds(baili, '王百里')).toBe(false);
+  });
+
   it('matches any part of the name, 字, 号 or other names', () => {
-    expect(matchesQuery(persons[6], '香菱')).toBe(true);
-    expect(matchesQuery(persons[3], '迎')).toBe(true);
-    expect(matchesQuery(persons[3], '  ')).toBe(false);
+    expect(finds(persons[6], '香菱')).toBe(true);
+    expect(finds(persons[3], '迎')).toBe(true);
+    expect(finds(persons[3], '  ')).toBe(false);
   });
 });
 
 describe('searchForest', () => {
-  const forest = searchForest(persons, relationships, persons.filter((p) => matchesQuery(p, '春')));
+  const forest = searchForest(persons, relationships, searchMatches(persons, relationships, persons, '春'));
 
   it('joins matches in one family through the fewest connectors', () => {
     expect(forest.matchIds).toEqual(new Set(['ying', 'tan', 'yan']));
@@ -105,7 +116,7 @@ describe('searching several strings', () => {
 
   it('splits the query at 、 and commas', () => {
     expect(searchTerms(' 贾政、王夫人，香菱 ,, 贾政 ')).toEqual(['贾政', '王夫人', '香菱']);
-    expect(matchesQuery(persons[6], '贾政、香菱')).toBe(true);
+    expect(finds(persons[6], '甄、香菱')).toBe(true);
   });
 
   it('keeps only families in which every string is matched', () => {

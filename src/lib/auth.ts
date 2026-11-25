@@ -4,6 +4,7 @@ import { authProviders } from '@/lib/auth-providers';
 import { secrets } from '@/lib/secrets';
 import { githubVerifiedEmail, linkIdentity, signInAccount, type Provider, type SignInIdentity } from '@/lib/accounts';
 import { LINK_COOKIE, verifyLinkIntent } from '@/lib/link-intent';
+import { resolveAccountId } from '@/lib/account-merge';
 
 /** Where linking another sign-in method is started, and where its result is shown */
 export const ACCOUNT_PAGE = '/account';
@@ -41,8 +42,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const linkAccountId = verifyLinkIntent(jar.get(LINK_COOKIE)?.value);
         if (linkAccountId) {
           jar.delete(LINK_COOKIE);
-          const outcome = await linkIdentity(identity, linkAccountId);
-          return `${ACCOUNT_PAGE}?link=${outcome}&provider=${account.provider}`;
+          const result = await linkIdentity(identity, linkAccountId);
+          return result.outcome === 'merge'
+            ? `${ACCOUNT_PAGE}?merge=${result.mergeId}&provider=${account.provider}`
+            : `${ACCOUNT_PAGE}?link=${result.outcome}&provider=${account.provider}`;
         }
 
         user.id = await signInAccount(identity);
@@ -60,8 +63,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session;
     },
     async jwt({ token, user, account }) {
-      // On sign-in, the account ID found above
+      // On sign-in, the account ID found above; later, the account it has moved to, if merged
       if (account && user?.id) token.sub = user.id;
+      else if (token.sub) token.sub = await resolveAccountId(token.sub);
       return token;
     },
   },

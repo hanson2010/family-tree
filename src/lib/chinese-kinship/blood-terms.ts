@@ -2,39 +2,52 @@ import type { Person, Relationship } from '@/types';
 import { Gender, RelationshipType } from '@/types';
 
 /**
- * Terms for collateral blood relatives a little further out, from the generations each person is
- * below their closest common ancestor (`up` for the speaker, `down` for the other person), up to
- * a common great-grandparent:
+ * Terms for collateral blood relatives, from the generations each person is below their closest
+ * common ancestor (`up` for the speaker, `down` for the other person), up to 5 each way.
  *
- *   up 1, down 2: 侄子 / 侄女 (a brother's child), 外甥 / 外甥女 (a sister's child)
- *   up 1, down 3: 侄孙 / 侄孙女, 外甥孙 / 外甥孙女
- *   up 2, down 2: 堂哥 / 堂弟 / 堂姐 / 堂妹, otherwise 表哥 / 表弟 / 表姐 / 表妹
- *   up 2, down 3: 堂侄 / 堂侄女, otherwise 表侄 / 表侄女
- *   up 3, down 2: a parent's cousin: 堂伯 / 堂叔 / 堂姑 (表… when not of the same surname line);
- *                 on the mother's side 堂舅 / 堂姨 or 表舅 / 表姨
- *   up 3, down 3: 从堂哥 / 从堂弟 / 从堂姐 / 从堂妹, otherwise 表哥 / 表弟 / 表姐 / 表妹
+ * The prefix says how far the two lines branch apart: through siblings none, through first
+ * cousins 堂, through second cousins 从堂, further 族 — when every person linking them on the
+ * other person's side of the speaker's own line is a man (the same surname line); otherwise 表.
  *
- * 堂 means every person linking the two to their common ancestor is a man (the same surname line);
- * otherwise the relation is 表. Elder or younger comes from birth years. Lineal relatives, siblings,
- * aunts and uncles and grandparents' siblings are left to the general rules.
+ *   other person older by g generations — the sibling or cousin of the speaker's ancestor A at
+ *   their generation, elder or younger than A by birth years:
+ *     g 1: 伯 / 叔 / 姑 (A a man), 舅 / 姨 (A a woman)   e.g. 堂伯 (up 3, down 2)
+ *     g 2: 伯公 / 叔公 / 姑婆, 舅公 / 姨婆                 e.g. 堂叔公 (a grandfather's cousin)
+ *     g 3: 太伯公 / 太叔公 / 太姑婆, 太舅公 / 太姨婆       e.g. 太伯公 (a great-grandfather's brother)
+ *     g 4: 高伯祖 / 高叔祖 / 高祖姑, 高舅祖 / 高祖姨
+ *   with 外 before g 2 and above when the line up to A passes through a woman below A;
+ *   same generation: 堂哥 / 从堂弟 / 族姐 …, otherwise 表哥 / 表弟 / 表姐 / 表妹;
+ *   other person younger by k generations: 侄子 / 侄女, 侄孙 / 侄孙女, 曾侄孙 / 曾侄孙女 (k 1–3),
+ *   through a sister 外甥 / 外甥女, 外甥孙 / 外甥孙女, 曾外甥孙 / 曾外甥孙女; with a prefix
+ *   堂侄, 从堂侄孙, 表侄 ….
+ *
+ * Lineal relatives, siblings, aunts and uncles (up 2, down 1) and grandparents' siblings (up 3,
+ * down 1) are left to the general rules, and so is a pair linked more closely by marriage: a
+ * cousin who is also one's wife is 妻子, a 表侄 who married one's daughter 女婿 (see `closerLink`).
  */
 
-const MAX = 3;
+const MAX = 5;
 type Step = 'up' | 'down' | 'sibling';
 
-/** The blood-relative term `fromId` uses for `toId`, with their generation distance, or null when none applies */
+/**
+ * The blood-relative term `fromId` uses for `toId`, with their generation distance; or, when a
+ * marriage links them more closely, that link's relationships for the general rules to name;
+ * or null when none applies
+ */
 export function bloodTerm(
   fromId: string,
   toId: string,
   relationships: Relationship[],
   personMap: Map<string, Person>
-): { term: string; generations: number } | null {
+): { term: string; generations: number } | { closer: Relationship[] } | null {
   const path = closestBloodPath(fromId, toId, relationships);
   if (!path) return null;
   const { nodes, steps } = path;
+  const closer = closerLink(fromId, toId, relationships, steps.length);
+  if (closer) return { closer };
   const up = steps.filter((s) => s === 'up' || s === 'sibling').length;
   const down = steps.filter((s) => s === 'down' || s === 'sibling').length;
-  if (!((up === 1 && down >= 2) || (up >= 2 && down >= 2))) return null;
+  if (!((up === 1 && down >= 2) || (up >= 2 && down >= 2) || (down === 1 && up >= 4))) return null;
 
   // The persons below the common ancestor on each side: the speaker's line (speaker first, up to
   // the ancestor's child) and the other person's line (the ancestor's child first). Through a
@@ -51,37 +64,133 @@ export function bloodTerm(
   const pick = (m: string, f: string, either: string) => (male ? m : female ? f : either);
   const olderThan = (a?: Person, b?: Person) =>
     a?.birthYear != null && b?.birthYear != null && a.birthYear !== b.birthYear ? a.birthYear < b.birthYear : undefined;
-  const elder = olderThan(target, person(fromId));
-  const sibTerm = (prefix: string) =>
-    elder === undefined
-      ? pick(`${prefix}兄弟`, `${prefix}姐妹`, `${prefix}兄弟姐妹`)
-      : pick(elder ? `${prefix}哥` : `${prefix}弟`, elder ? `${prefix}姐` : `${prefix}妹`, `${prefix}兄弟姐妹`);
-
-  // Linking persons: everyone between each end and the common ancestor
-  const links = [...own.slice(1), ...other.slice(0, -1)];
-  const sameLine = links.every(isMale);
   const generations = Math.abs(down - up);
 
+  /** How far apart the lines are: 1 through siblings, 2 through first cousins, … */
+  const prefix = (degree: number, sameLine: boolean) =>
+    degree <= 1 ? '' : !sameLine ? '表' : degree === 2 ? '堂' : degree === 3 ? '从堂' : '族';
+
+  // The other person is older: the sibling or cousin of the speaker's ancestor A at their generation
+  if (up > down) {
+    const g = up - down;
+    if (g > 4) return null;
+    const ancestor = own[g];
+    const p = prefix(down, [...own.slice(g + 1), ...other.slice(0, -1)].every(isMale));
+    const outer = g >= 2 && own.slice(1, g).some((id) => !isMale(id)) ? '外' : '';
+    const elder = olderThan(target, person(ancestor));
+    const elderOrYounger = (older: string, younger: string) =>
+      elder === undefined ? `${outer}${p}${older}/${outer}${p}${younger}` : `${outer}${p}${elder ? older : younger}`;
+    const names: Record<number, [string, string, string, string, string]> = {
+      // elder brother, younger brother, sister (of a man); brother, sister (of a woman)
+      1: ['伯', '叔', '姑', '舅', '姨'],
+      2: ['伯公', '叔公', '姑婆', '舅公', '姨婆'],
+      3: ['太伯公', '太叔公', '太姑婆', '太舅公', '太姨婆'],
+      4: ['高伯祖', '高叔祖', '高祖姑', '高舅祖', '高祖姨'],
+    };
+    const [olderBrother, youngerBrother, sister, herBrother, herSister] = names[g];
+    if (!isMale(ancestor)) {
+      return { term: pick(`${outer}${p}${herBrother}`, `${outer}${p}${herSister}`, `${outer}${p}${herBrother}${herSister}`), generations };
+    }
+    const brother = elderOrYounger(olderBrother, youngerBrother);
+    return { term: pick(brother, `${outer}${p}${sister}`, `${brother}/${outer}${p}${sister}`), generations };
+  }
+
+  // The same generation
+  if (up === down) {
+    const p = prefix(up, [...own.slice(1), ...other.slice(0, -1)].every(isMale));
+    const elder = olderThan(target, person(fromId));
+    const term =
+      elder === undefined
+        ? pick(`${p}兄弟`, `${p}姐妹`, `${p}兄弟姐妹`)
+        : pick(elder ? `${p}哥` : `${p}弟`, elder ? `${p}姐` : `${p}妹`, `${p}兄弟姐妹`);
+    return { term, generations };
+  }
+
+  // The other person is younger by k generations: a descendant of the speaker's sibling or cousin,
+  // the one at the speaker's generation being other[up - 1]
+  const k = down - up;
+  if (k > 3) return null;
+  const levels = ['', '侄', '侄孙', '曾侄孙'];
   if (up === 1) {
     const brother = isMale(other[0]);
-    if (down === 2) return { term: brother ? pick('侄子', '侄女', '侄') : pick('外甥', '外甥女', '外甥'), generations };
-    return { term: brother ? pick('侄孙', '侄孙女', '侄孙') : pick('外甥孙', '外甥孙女', '外甥孙'), generations };
+    const base = brother ? levels[k] : ['', '外甥', '外甥孙', '曾外甥孙'][k];
+    return { term: pick(k === 1 && brother ? '侄子' : base, `${base}女`, base), generations };
   }
-  if (up === 2 && down === 2) return { term: sibTerm(sameLine ? '堂' : '表'), generations };
-  if (up === 2 && down === 3) {
-    return { term: sameLine ? pick('堂侄', '堂侄女', '堂侄') : pick('表侄', '表侄女', '表侄'), generations };
+  const p = prefix(up, [...own.slice(1), ...other.slice(0, up)].every(isMale));
+  return { term: pick(`${p}${levels[k]}`, `${p}${levels[k]}女`, `${p}${levels[k]}`), generations };
+}
+
+/**
+ * The relationships of a marriage link between the two closer than their blood path of
+ * `bloodSteps`, or null: married to each other, or one married to a blood relative of the other at
+ * most two steps away (children of one parent are one step apart, through their parent), the
+ * whole link shorter than the blood path. Such links (妻子, 女婿, 嫂子, 公公, 姑父, a husband's
+ * grandfather) come first. A marriage in the middle (a sister's husband's son) is a step relation
+ * the general rules do not name well, so it does not count.
+ */
+export function closerLink(
+  fromId: string,
+  toId: string,
+  relationships: Relationship[],
+  bloodSteps: number
+): Relationship[] | null {
+  const spouses = new Map<string, Relationship[]>();
+  /** Blood steps: each neighbour with the relationships that lead there */
+  const blood = new Map<string, Map<string, Relationship[]>>();
+  const children = new Map<string, Relationship[]>();
+  const link = (a: string, b: string, via: Relationship[]) => {
+    if (!blood.has(a)) blood.set(a, new Map());
+    if (!blood.has(b)) blood.set(b, new Map());
+    if (!blood.get(a)!.has(b)) blood.get(a)!.set(b, via);
+    if (!blood.get(b)!.has(a)) blood.get(b)!.set(a, via);
+  };
+  for (const r of relationships) {
+    if (r.type === RelationshipType.SPOUSE || r.type === RelationshipType.CONCUBINE || r.type === RelationshipType.BETROTHED) {
+      spouses.set(r.personAId, [...(spouses.get(r.personAId) ?? []), r]);
+      spouses.set(r.personBId, [...(spouses.get(r.personBId) ?? []), r]);
+    } else if (r.type === RelationshipType.PARENT_CHILD || r.type === RelationshipType.ADOPTIVE_PARENT || r.type === RelationshipType.FOSTER_PARENT) {
+      link(r.personAId, r.personBId, [r]);
+      children.set(r.personAId, [...(children.get(r.personAId) ?? []), r]);
+    } else if (r.type === RelationshipType.SIBLING || r.type === RelationshipType.HALF_SIBLING) {
+      link(r.personAId, r.personBId, [r]);
+    }
   }
-  if (up === 3 && down === 2) {
-    // A parent's cousin, named from the speaker's parent on this line
-    // On the mother's side her own line decides: her 堂 brother is the speaker's 堂舅
-    const parent = own[1];
-    const prefix = links.filter((id) => id !== parent).every(isMale) ? '堂' : '表';
-    if (!isMale(parent)) return { term: pick(`${prefix}舅`, `${prefix}姨`, `${prefix}舅姨`), generations };
-    const older = olderThan(target, person(parent));
-    const uncle = older === undefined ? `${prefix}伯/${prefix}叔` : older ? `${prefix}伯` : `${prefix}叔`;
-    return { term: pick(uncle, `${prefix}姑`, `${prefix}伯叔姑`), generations };
+  for (const kids of children.values()) {
+    kids.forEach((a) => kids.forEach((b) => a !== b && link(a.personBId, b.personBId, [a, b])));
   }
-  if (up === 3 && down === 3) return { term: sibTerm(sameLine ? '从堂' : '表'), generations };
+
+  /** The blood relationships from a to b within `max` steps, or null */
+  const near = (a: string, b: string, max: number): Relationship[] | null => {
+    const via = new Map<string, Relationship[]>([[a, []]]);
+    let frontier = [a];
+    for (let distance = 0; distance <= max; distance++) {
+      if (via.has(b)) return via.get(b)!;
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const [to, rels] of blood.get(id) ?? []) {
+          if (via.has(to)) continue;
+          via.set(to, [...via.get(id)!, ...rels]);
+          next.push(to);
+        }
+      }
+      frontier = next;
+    }
+    return null;
+  };
+  const other = (r: Relationship, id: string) => (r.personAId === id ? r.personBId : r.personAId);
+
+  const married = (spouses.get(fromId) ?? []).find((r) => other(r, fromId) === toId);
+  if (married) return [married];
+  const max = Math.min(2, bloodSteps - 2);
+  if (max < 1) return null;
+  for (const r of spouses.get(toId) ?? []) {
+    const path = near(fromId, other(r, toId), max);
+    if (path) return [...path, r];
+  }
+  for (const r of spouses.get(fromId) ?? []) {
+    const path = near(other(r, fromId), toId, max);
+    if (path) return [r, ...path];
+  }
   return null;
 }
 

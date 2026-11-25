@@ -227,7 +227,7 @@ export function AddRelationshipForm({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent size="form">
         <DialogHeader>
           <DialogTitle>
             {mode === 'create' ? '添加新关系' : '编辑关系'}

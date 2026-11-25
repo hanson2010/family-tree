@@ -174,7 +174,7 @@ export function GroupPhotoDialog({ isOpen, persons, linkedIds, onClose, onSaved 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent size="wide">
         <DialogHeader>
           <DialogTitle>{t('groupPhoto')}</DialogTitle>
           <DialogDescription>{t('groupPhotoDescription')}</DialogDescription>

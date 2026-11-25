@@ -38,6 +38,26 @@ interface PersonFormProps {
   onClose: () => void;
 }
 
+/** A form for a new person; `isPrivate` carries over from the last person added */
+function emptyForm(isPrivate: boolean): PersonFormData {
+  return {
+    name: '',
+    courtesyName: '',
+    artName: '',
+    gender: GenderEnum.UNKNOWN,
+    birthYear: null,
+    birthMonth: null,
+    birthDay: null,
+    deathYear: null,
+    deathMonth: null,
+    deathDay: null,
+    link: '',
+    description: '',
+    avatar: null,
+    isPrivate,
+  };
+}
+
 export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFormProps) {
   const { toast } = useToast();
   const { t } = useLocale();
@@ -84,6 +104,9 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
   // Other names as typed; split into the list on submit
   const [otherNamesText, setOtherNamesText] = useState(formatOtherNames(person?.otherNames));
 
+  // Public or private as the last person added, for the next one
+  const lastPrivate = React.useRef(false);
+
   // Reset form when person changes
   React.useEffect(() => {
     setOtherNamesText(formatOtherNames(person?.otherNames));
@@ -105,22 +128,7 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
         isPrivate: person.isPrivate || false,
       });
     } else {
-      setFormData({
-        name: '',
-        courtesyName: '',
-        artName: '',
-        gender: GenderEnum.UNKNOWN,
-        birthYear: null,
-        birthMonth: null,
-        birthDay: null,
-        deathYear: null,
-        deathMonth: null,
-        deathDay: null,
-        link: '',
-        description: '',
-        avatar: null,
-        isPrivate: false,
-      });
+      setFormData(emptyForm(lastPrivate.current));
     }
   }, [person]);
 
@@ -200,6 +208,13 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
         title: mode === 'create' ? t('personCreated') : t('personUpdated'),
         description: formData.name,
       });
+      // The next person starts from an empty form, keeping only public or private
+      if (mode === 'create') {
+        lastPrivate.current = formData.isPrivate;
+        setFormData(emptyForm(formData.isPrivate));
+        setOtherNamesText('');
+        setChosenSavedId(null);
+      }
       onClose();
     } catch (error) {
       toast({
@@ -214,7 +229,7 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent size="form">
         <DialogHeader>
           <DialogTitle>
             {mode === 'create' ? t('createPerson') : t('editPerson')}
@@ -224,9 +239,10 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Avatar Upload */}
           <div className="flex items-center gap-4">
-            <div className="relative w-20 h-20 rounded-full bg-muted flex items-center justify-center overflow-hidden">
-              {formData.avatar ? (
-                <>
+            {/* The circle clips the photo; the ✕ sits on its edge, outside the clipping */}
+            <div className="relative h-20 w-20 shrink-0">
+              <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-muted">
+                {formData.avatar ? (
                   <Image
                     src={formData.avatar}
                     alt="Avatar"
@@ -235,16 +251,20 @@ export function PersonForm({ isOpen, mode, person, onSubmit, onClose }: PersonFo
                     unoptimized
                     className="w-full h-full object-cover"
                   />
-                  <button
-                    type="button"
-                    onClick={handleRemoveAvatar}
-                    className="absolute top-0 right-0 p-1 bg-destructive text-destructive-foreground rounded-full"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </>
-              ) : (
-                <User className="w-8 h-8 text-muted-foreground" />
+                ) : (
+                  <User className="w-8 h-8 text-muted-foreground" />
+                )}
+              </div>
+              {formData.avatar && (
+                <button
+                  type="button"
+                  aria-label={t('removeAvatar')}
+                  title={t('removeAvatar')}
+                  onClick={handleRemoveAvatar}
+                  className="absolute right-0 top-0 rounded-full bg-destructive p-1 text-destructive-foreground shadow ring-2 ring-card"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               )}
             </div>
 

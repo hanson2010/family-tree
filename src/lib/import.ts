@@ -48,7 +48,20 @@ export const importCommitSchema = z.object({
     .array(personSchema.omit({ isPrivate: true, avatar: true }).extend({ key: z.string().min(1) }))
     .max(MAX_IMPORT_PERSONS),
   relationships: z
-    .array(z.object({ a: importRefSchema, b: importRefSchema, type: z.nativeEnum(RelationshipType) }))
+    .array(
+      z.object({
+        a: importRefSchema,
+        b: importRefSchema,
+        type: z.nativeEnum(RelationshipType),
+        // Optional dates, e.g. of a marriage added with a family
+        startYear: z.number().int().nullable().optional(),
+        startMonth: z.number().int().min(1).max(12).nullable().optional(),
+        startDay: z.number().int().min(1).max(31).nullable().optional(),
+        endYear: z.number().int().nullable().optional(),
+        endMonth: z.number().int().min(1).max(12).nullable().optional(),
+        endDay: z.number().int().min(1).max(31).nullable().optional(),
+      })
+    )
     .max(MAX_IMPORT_RELATIONSHIPS),
 });
 export type ImportCommit = z.infer<typeof importCommitSchema>;

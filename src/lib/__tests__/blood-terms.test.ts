@@ -90,20 +90,23 @@ describe('collateral blood relatives', () => {
     expect(term('侄')).toBe('侄子');
     expect(term('侄孙')).toBe('侄孙');
     expect(term('外甥女')).toBe('外甥女');
-    expect(term('外甥孙')).toBe('外甥孙');
+    // relationship.js's word (the old engine said 外甥孙)
+    expect(term('外甥孙')).toBe('甥外孙');
   });
 
   it('tells 堂 from 表 by the linking persons', () => {
     expect(term('堂兄')).toBe('堂哥');
-    expect(term('表弟')).toBe('表弟');
+    // relationship.js names the side: a father's sister's son (the old engine said 表弟)
+    expect(term('表弟')).toBe('姑表弟');
     expect(term('堂侄女')).toBe('堂侄女');
     expect(term('表侄')).toBe('表侄');
   });
 
   it('names the cousins of parents, and second cousins', () => {
     expect(term('堂伯')).toBe('堂伯');
-    expect(term('表叔')).toBe('表叔');
+    // Formal, with the side: a father's father's sister's son (the old engine said 表叔)
+    expect(term('表叔')).toBe('姑表叔父');
     expect(term('堂舅')).toBe('堂舅');
-    expect(term('从堂哥')).toBe('从堂哥');
+    expect(term('从堂哥')).toBe('从堂兄');
   });
 });

@@ -84,16 +84,33 @@ export async function revokeToken(userId: string, id: string): Promise<void> {
   // Another user's token is reported as missing, so its existence is not revealed
   if (!token || token.userId !== userId) throw new ServiceError(404, 'Token not found');
   await getFirestore().collection(KINDS.API_TOKEN).doc(id).delete();
+  for (const [key, entry] of verified) if (entry.owner.tokenId === id) verified.delete(key);
 }
 
-/** The owner of a valid token, or null; records when the token was last used */
+/** How long an instance trusts a token it has checked; a revoked token stops working within this */
+const VERIFIED_TTL_MS = 60 * 1000;
+const verified = new Map<string, { owner: { userId: string; tokenId: string }; at: number }>();
+
+/**
+ * The owner of a valid token, or null; records when the token was last used. A valid token is
+ * remembered for a minute, so most calls cost no read.
+ */
 export async function verifyToken(token: string): Promise<{ userId: string; tokenId: string } | null> {
   if (!token.startsWith(TOKEN_PREFIX)) return null;
-  const [stored] = await queryEntitiesByProperty<StoredToken>(KINDS.API_TOKEN, 'tokenHash', hash(token));
-  if (!stored) return null;
+  const tokenHash = hash(token);
+  const cached = verified.get(tokenHash);
+  if (cached && Date.now() - cached.at < VERIFIED_TTL_MS) return cached.owner;
+  const [stored] = await queryEntitiesByProperty<StoredToken>(KINDS.API_TOKEN, 'tokenHash', tokenHash);
+  if (!stored) {
+    verified.delete(tokenHash);
+    return null;
+  }
   const lastUsed = toDate(stored.lastUsedAt);
   if (!lastUsed || Date.now() - lastUsed.getTime() > LAST_USED_RESOLUTION_MS) {
     await getFirestore().collection(KINDS.API_TOKEN).doc(stored.id).update({ lastUsedAt: new Date() });
   }
-  return { userId: stored.userId, tokenId: stored.id };
+  const owner = { userId: stored.userId, tokenId: stored.id };
+  if (verified.size > 1000) verified.clear();
+  verified.set(tokenHash, { owner, at: Date.now() });
+  return owner;
 }

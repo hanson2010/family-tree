@@ -157,7 +157,7 @@ export function MergePersonDialog({ isOpen, person, candidates, linkedIds, relat
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isWorking && onClose()}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent size="wide">
         <DialogHeader>
           <DialogTitle>{t('mergePerson')}</DialogTitle>
           <DialogDescription>{t('mergeDescription').replaceAll('{name}', person.name)}</DialogDescription>

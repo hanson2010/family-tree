@@ -1,4 +1,4 @@
-import { Firestore, WhereFilterOp, QueryDocumentSnapshot, DocumentData, Query } from '@google-cloud/firestore';
+import { Firestore, QueryDocumentSnapshot, DocumentData } from '@google-cloud/firestore';
 
 // Lazy-initialized Firestore client
 // In development, uses GOOGLE_APPLICATION_CREDENTIALS env variable
@@ -51,38 +51,10 @@ export async function getEntity<T>(collection: string, id: string): Promise<T | 
   return { id: doc.id, ...doc.data() } as T;
 }
 
-export async function saveEntity<T extends { id: string }>(collection: string, entity: T): Promise<void> {
-  const firestore = getFirestore();
-  const docRef = firestore.collection(collection).doc(entity.id);
-
-  // Exclude id from the document data (it's stored as the document ID)
-  const { id, ...data } = entity as { id: string; [key: string]: unknown };
-
-  await docRef.set(data);
-}
-
 export async function deleteEntity(collection: string, id: string): Promise<void> {
   const firestore = getFirestore();
   const docRef = firestore.collection(collection).doc(id);
   await docRef.delete();
-}
-
-export async function queryEntities<T>(
-  collection: string,
-  filters?: Array<{ property: string; operator: WhereFilterOp; value: unknown }>
-): Promise<T[]> {
-  const firestore = getFirestore();
-  const collectionRef = firestore.collection(collection);
-  let query: Query<DocumentData> = collectionRef;
-
-  if (filters && filters.length > 0) {
-    for (const filter of filters) {
-      query = query.where(filter.property, filter.operator, filter.value);
-    }
-  }
-
-  const snapshot = await query.get();
-  return snapshot.docs.map(docToEntity<T>);
 }
 
 export async function queryEntitiesByProperty<T>(
