@@ -42,6 +42,9 @@ steps:
       # Caps cost under abuse; MCP limits are counted per instance
       - '--max-instances'
       - '2'
+      # The app's identity: reads the secret and Firestore
+      - '--service-account'
+      - 'service-account-1@$PROJECT_ID.iam.gserviceaccount.com'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
