@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSession, signIn } from 'next-auth/react';
-import { ChevronRight, Database, Loader2, LogIn, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Database, Loader2, LogIn, UserPlus } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FamilyTreeCanvas } from '@/components/FamilyTreeCanvas';
 import { LeftPanel } from '@/components/LeftPanel';
@@ -37,6 +37,48 @@ import { searchForest, searchMatches } from '@/lib/search-forest';
 import { personTitle } from '@/lib/person-title';
 
 const SELECTED_PERSON_KEY = 'selectedPersonId';
+const LEFT_FOLDED_KEY = 'panelLeftFolded';
+const RIGHT_FOLDED_KEY = 'panelRightFolded';
+
+/** Whether the panels sit beside the canvas (lg and up) rather than open as drawers */
+function isWideScreen(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+}
+
+/** A folded panel on a wide screen: a strip whose button unfolds it */
+function FoldedStrip({ side, label, onUnfold }: { side: 'left' | 'right'; label: string; onUnfold: () => void }) {
+  const Icon = side === 'left' ? ChevronsRight : ChevronsLeft;
+  return (
+    <button
+      type="button"
+      onClick={onUnfold}
+      aria-label={label}
+      title={`${label} (${side === 'left' ? '[' : ']'})`}
+      className="hidden h-full w-full items-start justify-center pt-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+/** A tab on the canvas edge that folds the panel beside it, on wide screens */
+function FoldTab({ side, label, onFold }: { side: 'left' | 'right'; label: string; onFold: () => void }) {
+  const Icon = side === 'left' ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={onFold}
+      aria-label={label}
+      title={`${label} (${side === 'left' ? '[' : ']'})`}
+      className={cn(
+        'absolute top-1/2 z-20 hidden h-10 w-5 -translate-y-1/2 items-center justify-center border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground lg:flex',
+        side === 'left' ? 'left-0 rounded-r-md border-l-0' : 'right-0 rounded-l-md border-r-0'
+      )}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
 
 /** The address of a person: the tree centered on them */
 export const personPath = (id: string) => `/person/${encodeURIComponent(id)}`;
@@ -91,6 +133,9 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
   // Panels shown as drawers on small screens
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  // Panels folded to a strip on wide screens (drawers stay as they are on small ones)
+  const [leftFolded, setLeftFolded] = useState(false);
+  const [rightFolded, setRightFolded] = useState(false);
 
   // Form state
   const [isPersonFormOpen, setIsPersonFormOpen] = useState(false);
@@ -645,12 +690,65 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
 
   const canEditSelected = !!selectedPerson && !!userId && selectedPerson.createdBy === userId;
 
+  // Folding: each panel's choice is kept in this browser; until the user makes one, the right
+  // panel starts folded on windows narrower than 1280px
+  useEffect(() => {
+    const read = (key: string) => {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    };
+    const left = read(LEFT_FOLDED_KEY);
+    const right = read(RIGHT_FOLDED_KEY);
+    setLeftFolded(left === '1');
+    setRightFolded(right !== null ? right === '1' : window.innerWidth < 1280);
+  }, []);
+
+  const setFolded = useCallback((side: 'left' | 'right', folded: boolean) => {
+    (side === 'left' ? setLeftFolded : setRightFolded)(folded);
+    try {
+      localStorage.setItem(side === 'left' ? LEFT_FOLDED_KEY : RIGHT_FOLDED_KEY, folded ? '1' : '0');
+    } catch {
+      // Storage unavailable; the choice lasts until the page is closed
+    }
+    // The canvas changed size: center the selected person again once the layout has settled
+    setTimeout(() => setRecenterRequest((n) => n + 1), 50);
+  }, []);
+
+  // The panel buttons and keys fold a panel on wide screens and open its drawer on small ones
+  const toggleLeft = useCallback(() => {
+    if (isWideScreen()) setFolded('left', !leftFolded);
+    else setIsMenuOpen((open) => !open);
+  }, [leftFolded, setFolded]);
+  const toggleRight = useCallback(() => {
+    if (isWideScreen()) setFolded('right', !rightFolded);
+    else setIsDetailsOpen((open) => !open);
+  }, [rightFolded, setFolded]);
+
+  // [ and ] toggle the left and right panels, except while typing or in a dialog
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== '[' && event.key !== ']') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      if (event.key === '[') toggleLeft();
+      else toggleRight();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleLeft, toggleRight]);
+
   const drawerBase =
     'absolute inset-y-0 z-40 w-80 max-w-[85vw] overflow-y-auto bg-background shadow-xl transition-[transform,visibility] duration-200 lg:visible lg:static lg:z-auto lg:w-72 lg:shrink-0 lg:translate-x-0 lg:shadow-none';
 
   return (
     <div className="flex h-dvh flex-col bg-background">
-      <Header onOpenMenu={() => setIsMenuOpen(true)} />
+      <Header onToggleMenu={toggleLeft} />
 
       <div className="relative flex min-h-0 flex-1">
         {/* Backdrop behind an open drawer */}
@@ -665,40 +763,55 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
         )}
 
         {/* Left panel - search, filters, actions */}
-        <aside className={cn(drawerBase, 'left-0 border-r', isMenuOpen ? 'translate-x-0' : 'invisible -translate-x-full')}>
-          <LeftPanel
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onSearch={handleSearch}
-            search={
-              activeSearch && forest
-                ? { query: activeSearch, total: forest.total, shown: forest.matchIds.size }
-                : null
-            }
-            onAddPerson={handleAddPerson}
-            onAddRelationship={handleAddRelationship}
-            onQuickAddRelationship={handleQuickAddRelationship}
-            onImport={handleImport}
-            onGroupPhoto={handleGroupPhoto}
-            onRefresh={handleRefresh}
-            onReload={handleReload}
-            isReloading={isReloading}
-            persons={persons}
-            filterGenders={filterGenders}
-            filterLivingInYear={filterLivingInYear}
-            generationRange={generationRange}
-            onFilterGendersChange={setFilterGenders}
-            onFilterLivingInYearChange={setFilterLivingInYear}
-            onGenerationRangeChange={setGenerationRange}
-            onFilterReset={() => {
-              setFilterGenders([]);
-              setFilterLivingInYear(null);
-            }}
-          />
+        <aside
+          className={cn(
+            drawerBase,
+            'left-0 border-r',
+            isMenuOpen ? 'translate-x-0' : 'invisible -translate-x-full',
+            leftFolded && 'lg:w-10 lg:overflow-hidden'
+          )}
+        >
+          {leftFolded && (
+            <FoldedStrip side="left" label={t('unfoldPanel')} onUnfold={() => setFolded('left', false)} />
+          )}
+          <div className={cn('h-full', leftFolded && 'lg:hidden')}>
+            <LeftPanel
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onSearch={handleSearch}
+              search={
+                activeSearch && forest
+                  ? { query: activeSearch, total: forest.total, shown: forest.matchIds.size }
+                  : null
+              }
+              onAddPerson={handleAddPerson}
+              onAddRelationship={handleAddRelationship}
+              onQuickAddRelationship={handleQuickAddRelationship}
+              onImport={handleImport}
+              onGroupPhoto={handleGroupPhoto}
+              onRefresh={handleRefresh}
+              onReload={handleReload}
+              isReloading={isReloading}
+              persons={persons}
+              filterGenders={filterGenders}
+              filterLivingInYear={filterLivingInYear}
+              generationRange={generationRange}
+              onFilterGendersChange={setFilterGenders}
+              onFilterLivingInYearChange={setFilterLivingInYear}
+              onGenerationRangeChange={setGenerationRange}
+              onFilterReset={() => {
+                setFilterGenders([]);
+                setFilterLivingInYear(null);
+              }}
+            />
+          </div>
         </aside>
 
         {/* Canvas */}
         <main className="relative min-w-0 flex-1">
+          {/* Tabs on the canvas edges fold an open panel, on wide screens */}
+          {!leftFolded && <FoldTab side="left" label={t('foldPanel')} onFold={() => setFolded('left', true)} />}
+          {!rightFolded && <FoldTab side="right" label={t('foldPanel')} onFold={() => setFolded('right', true)} />}
           {isLoading || (persons.length > 0 && !selectedPerson) ? (
             <div className="flex h-full items-center justify-center">
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
@@ -749,12 +862,16 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
             />
           )}
 
-          {/* Selected person bar, in place of the details panel on small screens */}
+          {/* Selected person bar, in place of the details panel on small screens, and on wide
+              screens while it is folded */}
           {selectedPerson && (
             <button
               type="button"
-              onClick={() => setIsDetailsOpen(true)}
-              className="absolute inset-x-3 bottom-3 flex items-center gap-3 rounded-xl border bg-card p-2.5 text-left shadow-lg lg:hidden"
+              onClick={() => (isWideScreen() ? setFolded('right', false) : setIsDetailsOpen(true))}
+              className={cn(
+                'absolute inset-x-3 bottom-3 z-10 flex items-center gap-3 rounded-xl border bg-card p-2.5 text-left shadow-lg',
+                rightFolded ? 'lg:inset-x-auto lg:left-1/2 lg:w-80 lg:-translate-x-1/2' : 'lg:hidden'
+              )}
             >
               <PersonAvatar person={selectedPerson} className="h-10 w-10" />
               <span className="min-w-0 flex-1">
@@ -774,19 +891,31 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
         </main>
 
         {/* Right panel - person details */}
-        <aside className={cn(drawerBase, 'right-0 border-l', isDetailsOpen ? 'translate-x-0' : 'invisible translate-x-full')}>
-          <PersonDetailsPanel
-            person={selectedPerson}
-            persons={persons}
-            relationships={relationships}
-            canEdit={canEditSelected}
-            onSelectPerson={selectPerson}
-            onEdit={handleEditPerson}
-            onDelete={handleDeletePerson}
-            onMerge={(person) => setMergingPerson(person)}
-            onChangeRelationships={handleDeleteRelationship}
-            onShowFamily={forest && forest.total > 0 && chosenInSearch ? showFamily : undefined}
-          />
+        <aside
+          className={cn(
+            drawerBase,
+            'right-0 border-l',
+            isDetailsOpen ? 'translate-x-0' : 'invisible translate-x-full',
+            rightFolded && 'lg:w-10 lg:overflow-hidden'
+          )}
+        >
+          {rightFolded && (
+            <FoldedStrip side="right" label={t('unfoldPanel')} onUnfold={() => setFolded('right', false)} />
+          )}
+          <div className={cn('h-full', rightFolded && 'lg:hidden')}>
+            <PersonDetailsPanel
+              person={selectedPerson}
+              persons={persons}
+              relationships={relationships}
+              canEdit={canEditSelected}
+              onSelectPerson={selectPerson}
+              onEdit={handleEditPerson}
+              onDelete={handleDeletePerson}
+              onMerge={(person) => setMergingPerson(person)}
+              onChangeRelationships={handleDeleteRelationship}
+              onShowFamily={forest && forest.total > 0 && chosenInSearch ? showFamily : undefined}
+            />
+          </div>
         </aside>
       </div>
 

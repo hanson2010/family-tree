@@ -12,11 +12,11 @@ import { useLocale } from '@/components/LocaleProvider';
 import { Locale } from '@/lib/i18n';
 
 interface HeaderProps {
-  /** Opens the search and actions panel on small screens */
-  onOpenMenu?: () => void;
+  /** Opens the search and actions panel on small screens, folds or unfolds it on wide ones */
+  onToggleMenu?: () => void;
 }
 
-export function Header({ onOpenMenu }: HeaderProps) {
+export function Header({ onToggleMenu }: HeaderProps) {
   const { data: session, status } = useSession();
   const { locale, setLocale, t } = useLocale();
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
@@ -29,13 +29,13 @@ export function Header({ onOpenMenu }: HeaderProps) {
   return (
     <header className="z-30 w-full shrink-0 border-b bg-card">
       <div className="flex h-14 items-center gap-1 px-3 sm:px-4">
-        {onOpenMenu && (
+        {onToggleMenu && (
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 lg:hidden"
-            onClick={onOpenMenu}
-            title={t('openMenu')}
+            className="h-9 w-9"
+            onClick={onToggleMenu}
+            title={`${t('openMenu')} ([)`}
             aria-label={t('openMenu')}
           >
             <PanelLeft className="h-5 w-5" />

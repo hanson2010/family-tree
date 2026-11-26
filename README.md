@@ -118,7 +118,7 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run i
 - The gender and "living in year" filters also narrow search results; persons needed to keep the tree connected are shown faded.
 - The reload button beside **Random person** loads the latest data, keeping the selected person.
 - Point at a person to highlight their lines; drag to pan, scroll or +/− to zoom, the third button to see everything.
-- On screens narrower than 1024px, the header button opens the sidebar and the bottom bar the details panel.
+- On wide screens, the tabs on the canvas edges, the header's panel button and the `[` and `]` keys fold the side panels to a strip; the right panel starts folded below 1280px, and the bar at the bottom then shows the selected person. Below 1024px the panels open as drawers: the header button opens the sidebar and the bottom bar the details.
 
 ## AI Agents (MCP)
 
