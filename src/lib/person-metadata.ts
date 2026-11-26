@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import { getVisiblePerson } from '@/lib/family-service';
 import { formatOtherNames } from '@/lib/other-names';
-
-const SITE_NAME = '家谱';
+import { SITE_NAME, personHeading, personTitle } from '@/lib/person-title';
 const DESCRIPTION_LENGTH = 160;
 
 /**
@@ -18,9 +17,7 @@ export async function personMetadata(id: string): Promise<Metadata> {
     return { title: SITE_NAME };
   }
 
-  const years =
-    person.birthYear || person.deathYear ? `（${person.birthYear ?? '?'}–${person.deathYear ?? ''}）` : '';
-  const title = `${person.name}${years}`;
+  const title = personHeading(person);
   const names = [
     person.courtesyName && `字${person.courtesyName}`,
     person.artName && `号${person.artName}`,
@@ -33,7 +30,7 @@ export async function personMetadata(id: string): Promise<Metadata> {
   const image = person.avatar ?? '/opengraph-image';
 
   return {
-    title: `${title} · ${SITE_NAME}`,
+    title: personTitle(person),
     description,
     openGraph: { type: 'profile', siteName: SITE_NAME, title, description, images: [{ url: image, alt: person.name }] },
     twitter: { card: 'summary', title, description, images: [image] },

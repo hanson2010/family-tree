@@ -209,7 +209,7 @@ export function LeftPanel({
         <p className="text-xs leading-relaxed text-muted-foreground">{t('signInSubtitle')}</p>
       )}
 
-      <p className="mt-auto pt-2 text-center text-xs text-muted-foreground/70">{t('appName')} · v1.0.0</p>
+      <p className="mt-auto pt-2 text-center text-xs text-muted-foreground/70">{t('appName')} · v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
     </div>
   );
 }

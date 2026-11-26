@@ -381,17 +381,19 @@ export function FamilyTreeCanvas({
         ? selectedPersonId
         : persons[0]?.id ?? null
       : selectedPersonId || (persons.length > 0 ? persons[0].id : null);
-    // The tree is everyone connected through any person, so a filter that hides someone does not
-    // cut off the persons related through them; `persons` then decides who is drawn
+    // The tree is the selected person's own piece of the persons that may be drawn (within the
+    // generation range, the filters and their connectors): connected to them through drawn persons
+    // only, so a relative linked only through someone outside the range (蒋介卿, through his
+    // father, for 蒋万安) is left out rather than drawn apart
+    const inRange = persons.filter((person) => {
+      const gen = person.relativeGeneration ?? 0;
+      return gen >= GENERATION_MIN && gen <= GENERATION_MAX;
+    });
     const connectedIds =
-      !isForest && centerId ? findConnectedPersons(centerId, kinshipPersons, relationships) : new Set<string>();
+      !isForest && centerId ? findConnectedPersons(centerId, inRange, relationships) : new Set<string>();
     const visiblePersons = isForest
       ? persons.filter((person) => forestPositions.has(person.id))
-      : persons.filter((person) => {
-          if (!connectedIds.has(person.id)) return false;
-          const gen = person.relativeGeneration ?? 0;
-          return gen >= GENERATION_MIN && gen <= GENERATION_MAX;
-        });
+      : inRange.filter((person) => connectedIds.has(person.id));
     const visibleIds = new Set(visiblePersons.map((p) => p.id));
     // Search results keep their view while persons are chosen in them
     const viewKey = `${isForest ? 'forest' : centerId}|${[...visibleIds].sort().join(',')}`;

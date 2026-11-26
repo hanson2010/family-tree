@@ -34,6 +34,7 @@ import { GenerationCalculator } from '@/lib/generation-calculator';
 import { connectedPersonIds, linkedPersonIds } from '@/lib/candidates';
 import { connectFiltered } from '@/lib/tree-filter';
 import { searchForest, searchMatches } from '@/lib/search-forest';
+import { personTitle } from '@/lib/person-title';
 
 const SELECTED_PERSON_KEY = 'selectedPersonId';
 
@@ -620,6 +621,12 @@ export function FamilyTreeApp({ personId: initialPersonId }: { personId?: string
     if (!selectedPersonId) return null;
     return persons.find(p => p.id === selectedPersonId) || null;
   }, [persons, selectedPersonId]);
+
+  // The tab title follows the person at the center, as the page's own title does on first load
+  const pageTitle = personTitle(selectedPerson);
+  useEffect(() => {
+    document.title = pageTitle;
+  }, [pageTitle]);
 
   // Relationships between persons the user can see
   const visibleRelationships = React.useMemo(() => {

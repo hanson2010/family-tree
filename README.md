@@ -2,16 +2,23 @@
 
 A web app for building and viewing family trees, labelled with Chinese kinship terms. Built with Next.js 16 and D3.js, it stores data in Google Firestore and runs on Google Cloud Run.
 
+## Live Service
+
+The app runs at https://family-tree.pythoner.work. Anyone can browse its public persons; sign in with Google or GitHub to add your own. Its MCP endpoint for AI agents is https://family-tree.pythoner.work/api/mcp.
+
+![A search for 宝玉、黛玉: 贾宝玉 and 林黛玉 joined through 贾政, 贾敏 and 贾母](docs/screenshot.png)
+
 ## Features
 
-- Sign in with Google or GitHub. One account can have both: link the other with **Link** on the account page (click your name at the top right), or sign in for the first time with one whose verified email matches the account's. Linking a sign-in method that belongs to another account offers to merge that account into yours: after you confirm (within 10 minutes), its sign-in methods, persons, relationships, saved faces and API tokens move to your account and the other account is deleted. The last sign-in method cannot be unlinked. You can change or delete only the persons and relationships you created; private persons are visible only to their creator.
-- The tree is built around the selected person and shows 0–3 generations above and below (default 3), one row per generation. Persons within 四代 of the selected person (lineal relatives up to great-grandparents and great-grandchildren; collateral relatives sharing an ancestor no further back than a great-grandparent, such as 伯祖, 堂伯, 从堂兄弟, 堂侄 and 侄孙; plus spouses and in-laws at either end) show their Chinese kinship term. A term comes from the chain of family steps between the two (父亲的哥哥的儿子 …), up to five steps, looked up in a table generated from [relationship.js](https://github.com/mumuy/relationship), with the app's own terms for wives and concubines (主母, 侧室, 嫡母, 庶母, …), step-parents (继母, 继父), spouses of siblings and grandchildren (舅嫂, 连襟, 孙媳, 岳祖父, …), a wife's brother's children (内侄) and cousins' children (表侄); a wife calls her husband's relatives beyond his parents and siblings as he does (祖父, 侄子, 外甥). Kinship terms name one level of 表: a relative through women further out, such as a second cousin through a grandmother (林黛玉 and 史湘云), is named with the plain 表 (表姐, 表妹). Of equally short chains the one through a marriage wins (a cousin who is one's wife is 妻子); where birth dates do not tell elder from younger, both terms show (伯父/叔父). A parent's brothers and sisters are numbered by birth order among them, the parent included (大姨母, 二姨母, 小姨母; casual 大姨, 二姨, and 老姨 in the north for the youngest of three or more), when every one of them has a birth date. The gear button at the top right sets formal (父亲, 祖父, 舅父; the default) or casual terms (爸爸, 爷爷, 舅舅), and for casual ones southern (外公, 外婆) or northern (姥爷, 姥姥).
-- Relationship types: parent–child, sibling, half sibling, spouse, concubine, betrothed, adoptive parent, foster parent, sworn sibling. Birth, death and relationship dates may include month and day.
-- A man's wives, concubines and betrothed stand beside him in order of start date (an undated one by birth year), whatever the relationship; their lines are solid, dashed and dotted. A person's marriages are numbered on the tree in order of start date when at least two of them have one.
-- Avatars from photos (JPEG, PNG, GIF or WebP, up to 10MB): a photo uploaded for one person is cropped to its middle square. For a group photo, Gemini finds the faces so you can give avatars to several persons, and unused faces can be saved for later.
-- Import from text or scans (up to 6 images or PDFs, 20MB in total): Gemini extracts persons and relationships, which you review before saving.
-- Besides the name, a person can have a 字, a 号 and other names (e.g. 香菱 for 甄英莲, kept in pinyin order), which search uses, plus a description and one web link (http or https; Wikipedia and 百度百科 links show their icon).
-- Duplicate public persons are refused: the same name, or a name matching another's 字, 号 or other names, with birth dates that do not differ. Names such as 王氏 also need the same birth year.
+- Sign in with Google or GitHub; link both to one account on the account page (click your name at the top right), or sign in with one whose verified email matches. Linking a sign-in method of another account offers to merge that account into yours. You can change only the persons and relationships you created; private persons are visible only to you.
+- The tree shows the selected person and their relatives 0–3 generations up and down (default 3), one row per generation.
+- Relatives within 四代 (up to great-grandparents and great-grandchildren, and relatives sharing an ancestor no further back) show their Chinese kinship term, from [relationship.js](https://github.com/mumuy/relationship) plus the app's terms for wives and concubines (主母, 庶母 …) and step-parents (继母). A wife calls her husband's wider family as he does. Where birth dates do not tell elder from younger, both terms show (伯父/叔父); a parent's siblings are numbered by birth (大姨母, 二姨母, 小姨母). The gear button at the top right chooses formal (父亲, 祖父; the default) or casual terms (爸爸, 爷爷), and southern (外公) or northern (姥爷).
+- Relationship types: parent–child, sibling, half sibling, spouse, concubine, betrothed, adoptive parent, foster parent, sworn sibling; dates may include month and day.
+- A man's wives, concubines and betrothed stand beside him by start date, with solid, dashed and dotted lines; marriages are numbered when at least two have a start date.
+- Avatars from photos (JPEG, PNG, GIF or WebP, up to 10MB), cropped to the middle square; for a group photo, Gemini finds the faces, and unused faces can be saved for later.
+- Import from text or scans (up to 6 images or PDFs, 20MB in total): Gemini extracts persons and relationships for you to review.
+- A person can also have a 字, a 号 and other names (香菱 for 甄英莲), which search uses, a description and a web link (Wikipedia and 百度百科 show their icon).
+- Duplicate public persons are refused: the same name, or one matching another's 字, 号 or other names, with birth dates that do not differ (王氏-style names need the same birth year).
 - AI agents can read and change the tree through MCP (see below).
 
 ## Run Locally
@@ -104,14 +111,14 @@ On each push to `main`, Cloud Build builds the app and deploys it to Cloud Run i
 
 ## Usage
 
-- Signed in, the sidebar offers **Add Person**, **Add Relationship**, **Add a Family**, **Import from text or scans** and **Avatars from a group photo**. **Add a Family** takes two parents and up to three children, each picked from the tree or typed as a new name, a new child with an optional birth date (a name exactly one person of that gender, and birth year when given, has is that person), and creates the new persons, the marriage (with an optional date) and the parent–child relationships at once, skipping relationships that exist.
-- Each person has an address, `/person/<id>`, shown in the address bar for the person at the center: refresh, bookmark or share it, and Back returns to the person before. A public person's link shows their name, years, names and avatar in link previews; a private person's link works only for their creator, signed in, and its preview shows nothing about them.
-- Click a person to select them; double-click one you created to edit them. The right panel shows their details and relatives, and lets you change their relationships, merge another of your persons into them, or delete them with their relationships.
-- Search (Enter or **Search**) finds persons whose name, 字, 号 (alone or after the surname, e.g. 蒋介石 for 蒋中正) or other names contain the text. Several strings separated by 、 or commas (`贾政、王夫人`) find persons containing any of them, keeping only families in which every string is found. The matches are shown on the canvas: matches in the same family form one tree, joined through faded persons, with the other parent of each 同父异母 or 同母异父 sibling shown too; unrelated matches stand side by side. At most 100 matches are shown, the earliest born. A single match is chosen straight away, showing their family tree. Click a person to see their details, then **查看家谱** (Show family tree) to see their family tree; clearing the search returns to the family tree too. The search is kept in the address (`?q=`), so Back returns to the results.
-- The gender and "living in year" filters keep the tree connected: persons needed to link the matches are shown faded with a dashed ring. They also narrow search results.
-- The reload button beside **Random person** loads the latest data, e.g. after changes through MCP, and keeps the selected person.
-- Point at a person to highlight their lines. Drag to pan, scroll or use +/− to zoom; the third zoom button returns to the full view.
-- On screens narrower than 1024px, the header button opens the sidebar and the bar at the bottom opens the details panel.
+- Signed in, the sidebar offers **Add Person**, **Add Relationship**, **Add a Family**, **Import from text or scans** and **Avatars from a group photo**. **Add a Family** creates two parents, up to three children and their relationships at once; persons picked from the tree, or typed names matching exactly one person, are not created again.
+- Each person has an address, `/person/<id>`: refresh, bookmark or share it, and Back returns to the person before. Link previews show a public person's name, years and avatar, and nothing about a private one.
+- Click a person to select them; double-click one you created to edit them. The right panel shows their details and relatives, and lets you add or change their relationships, merge another of your persons into them, or delete them.
+- Search (Enter or **Search**) finds persons by name, 字, 号 (also after the surname: 蒋介石 for 蒋中正) or other names; several names separated by 、 or commas keep only families where all are found. Matches show as a forest, related ones joined through faded persons, at most 100; a single match opens their family tree, and **查看家谱** opens a chosen match's. Back returns to the results.
+- The gender and "living in year" filters also narrow search results; persons needed to keep the tree connected are shown faded.
+- The reload button beside **Random person** loads the latest data, keeping the selected person.
+- Point at a person to highlight their lines; drag to pan, scroll or +/− to zoom, the third button to see everything.
+- On screens narrower than 1024px, the header button opens the sidebar and the bottom bar the details panel.
 
 ## AI Agents (MCP)
 
@@ -120,7 +127,7 @@ AI assistants can read and change the family tree through MCP at `<site URL>/api
 1. Signed in, click your name at the top right, open **API tokens** and create a token. It is shown once; up to 10 per user. Revoking one stops it within a minute.
 2. Add the server to the client with the token as a Bearer header, e.g. for Claude Code, in your project folder:
    ```bash
-   claude mcp add --scope project --transport http family-tree https://family-tree.pythoner.work/api/mcp --header "Authorization: Bearer <token>"
+   claude mcp add --scope project --transport http family-tree <site URL>/api/mcp --header "Authorization: Bearer <token>"
    ```
    This saves the token in the folder's `.mcp.json`; never commit or share that file.
 
